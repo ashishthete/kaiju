@@ -1,6 +1,17 @@
 use nexus_core::{NexusError, Result};
 use std::process::Command;
 
+/// Encode bytes as tmux `send-keys -H` hex arguments (one per byte). Pure.
+fn hex_bytes(bytes: &[u8]) -> Vec<String> {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Parse tmux `#{pane_width}x#{pane_height}` output (e.g. "80x24"). Pure.
+fn parse_size(s: &str) -> Option<(u16, u16)> {
+    let (w, h) = s.trim().split_once('x')?;
+    Some((w.parse().ok()?, h.parse().ok()?))
+}
+
 /// Manages tmux sessions for agent processes.
 pub struct TmuxManager;
 
@@ -137,5 +148,93 @@ impl TmuxManager {
         }
 
         Ok(())
+    }
+
+    /// Capture the *visible* pane (current screen) with ANSI escapes preserved
+    /// (`-e`), for rendering in a browser terminal. Unlike `capture_pane`, it
+    /// omits `-S` so the result is exactly one screen — ideal for repaint.
+    pub fn capture_pane_colored(session_name: &str) -> Result<String> {
+        let output = Command::new("tmux")
+            .args(["capture-pane", "-t", session_name, "-e", "-p"])
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(NexusError::Tmux(format!(
+                "failed to capture pane '{session_name}': {stderr}"
+            )));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    /// Inject raw bytes into the session as if typed, using `send-keys -H`
+    /// (hex). This passes through control sequences (Ctrl-C, arrows, Esc, …)
+    /// without any key-name mapping.
+    pub fn send_raw_bytes(session_name: &str, bytes: &[u8]) -> Result<()> {
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let mut args = vec![
+            "send-keys".to_string(),
+            "-t".to_string(),
+            session_name.to_string(),
+            "-H".to_string(),
+        ];
+        args.extend(hex_bytes(bytes));
+
+        let output = Command::new("tmux").args(&args).output()?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(NexusError::Tmux(format!(
+                "failed to send raw bytes to '{session_name}': {stderr}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Report the pane size as `(cols, rows)` so the browser terminal can match
+    /// it (avoids line-wrap mismatch).
+    pub fn pane_size(session_name: &str) -> Result<(u16, u16)> {
+        let output = Command::new("tmux")
+            .args([
+                "display-message",
+                "-p",
+                "-t",
+                session_name,
+                "#{pane_width}x#{pane_height}",
+            ])
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(NexusError::Tmux(format!(
+                "failed to read pane size '{session_name}': {stderr}"
+            )));
+        }
+
+        let raw = String::from_utf8_lossy(&output.stdout);
+        parse_size(&raw).ok_or_else(|| NexusError::Tmux(format!("unparseable pane size: {raw:?}")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_bytes_encodes_each_byte_as_two_digits() {
+        // Ctrl-C, then ESC [ A (up arrow)
+        assert_eq!(hex_bytes(&[0x03, 0x1b, 0x5b, 0x41]), vec!["03", "1b", "5b", "41"]);
+        assert_eq!(hex_bytes(&[0x00, 0xff]), vec!["00", "ff"]);
+        assert!(hex_bytes(&[]).is_empty());
+    }
+
+    #[test]
+    fn parse_size_reads_width_x_height() {
+        assert_eq!(parse_size("80x24\n"), Some((80, 24)));
+        assert_eq!(parse_size("  200x50  "), Some((200, 50)));
+        assert_eq!(parse_size("nope"), None);
+        assert_eq!(parse_size("80xfoo"), None);
     }
 }
