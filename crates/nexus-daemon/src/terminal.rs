@@ -116,9 +116,9 @@ async fn run_terminal(mut socket: WebSocket, session: String) {
             Ok(Some(Ok(Message::Text(t)))) => forward(&session, t.into_bytes()).await,
             Ok(Some(Ok(Message::Binary(b)))) => forward(&session, b).await,
             Ok(Some(Ok(Message::Close(_)))) | Ok(None) => return,
-            Ok(Some(Ok(_))) => {}     // ping/pong/other — ignore
+            Ok(Some(Ok(_))) => {}       // ping/pong/other — ignore
             Ok(Some(Err(_))) => return, // socket error
-            Err(_elapsed) => {}        // no input this tick — refresh
+            Err(_elapsed) => {}         // no input this tick — refresh
         }
     }
 }

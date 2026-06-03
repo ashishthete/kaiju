@@ -225,7 +225,10 @@ mod tests {
     #[test]
     fn hex_bytes_encodes_each_byte_as_two_digits() {
         // Ctrl-C, then ESC [ A (up arrow)
-        assert_eq!(hex_bytes(&[0x03, 0x1b, 0x5b, 0x41]), vec!["03", "1b", "5b", "41"]);
+        assert_eq!(
+            hex_bytes(&[0x03, 0x1b, 0x5b, 0x41]),
+            vec!["03", "1b", "5b", "41"]
+        );
         assert_eq!(hex_bytes(&[0x00, 0xff]), vec!["00", "ff"]);
         assert!(hex_bytes(&[]).is_empty());
     }
