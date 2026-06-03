@@ -350,3 +350,12 @@ async fn delete_missing_agent_returns_404() {
     let resp = build_app(AppState::new()).oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn xterm_asset_is_served_publicly() {
+    let app = nexus_daemon::server::build_app(nexus_daemon::server::AppState::new());
+    let res = app.oneshot(get_request("/assets/xterm.js")).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let ct = res.headers().get("content-type").unwrap().to_str().unwrap();
+    assert!(ct.contains("javascript"), "got content-type {ct}");
+}

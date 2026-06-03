@@ -36,7 +36,14 @@ pub fn bearer(header: Option<&str>) -> Option<&str> {
 /// are always public so liveness checks and the page load work unauthenticated.
 pub async fn require_auth(State(state): State<AppState>, req: Request, next: Next) -> Response {
     let path = req.uri().path();
-    if path == "/health" || path == "/" {
+    // Public: liveness, the dashboard page, and the vendored assets. The
+    // terminal WebSocket authenticates itself from its query string (browsers
+    // can't set headers on a WS handshake), so it is exempt here too.
+    if path == "/health"
+        || path == "/"
+        || path.starts_with("/assets/")
+        || path.ends_with("/terminal/ws")
+    {
         return next.run(req).await;
     }
 

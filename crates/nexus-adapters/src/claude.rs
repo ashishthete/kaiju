@@ -177,7 +177,9 @@ mod tests {
     #[test]
     fn structured_command_uses_stream_json_with_prompt() {
         let adapter = ClaudeAdapter;
-        let cmd = adapter.structured_command(&config(Some("fix the bug"))).unwrap();
+        let cmd = adapter
+            .structured_command(&config(Some("fix the bug")))
+            .unwrap();
         assert!(cmd.contains("-p --output-format stream-json"));
         assert!(cmd.contains("--model sonnet"));
         assert!(cmd.ends_with("'fix the bug'"));

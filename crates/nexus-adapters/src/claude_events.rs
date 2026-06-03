@@ -80,7 +80,8 @@ mod tests {
 
     #[test]
     fn result_error_yields_error_status() {
-        let line = r#"{"type":"result","subtype":"error_max_turns","is_error":true,"total_cost_usd":0.5}"#;
+        let line =
+            r#"{"type":"result","subtype":"error_max_turns","is_error":true,"total_cost_usd":0.5}"#;
         let parsed = parse_claude_event(line).unwrap();
         assert_eq!(parsed.status, Some(AgentStatus::Error));
         assert_eq!(parsed.estimated_cost_usd, Some(0.5));

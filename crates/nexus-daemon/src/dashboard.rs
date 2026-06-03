@@ -13,6 +13,8 @@ pub const PAGE: &str = r#"<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kaiju</title>
+<link rel="stylesheet" href="/assets/xterm.css">
+<script src="/assets/xterm.js"></script>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, sans-serif; margin: 0; padding: 1.5rem; }
@@ -48,16 +50,39 @@ pub const PAGE: &str = r#"<!doctype html>
   .reply { display: flex; gap: .5rem; margin-top: .75rem; }
   .reply input { flex: 1; font: inherit; padding: .4rem .6rem; border-radius: 5px; border: 1px solid #8886; background: transparent; }
   .note { color: #888; font-size: .8rem; margin-top: .4rem; min-height: 1rem; }
+  .tabs { display: flex; gap: .25rem; margin-bottom: .5rem; }
+  .tab { font-size: .8rem; padding: .25rem .7rem; }
+  .tab.active { background: #3b82f633; border-color: #3b82f6aa; }
+  #d-term { width: 100%; height: 24rem; }
+  #d-term[hidden] { display: none; }
+  td.actions { white-space: nowrap; }
+  td.actions button { padding: .15rem .45rem; font-size: .75rem; margin-left: .25rem; }
 </style>
 </head>
 <body>
   <h1>Kaiju</h1>
   <div class="sub">Live fleet &middot; refreshing every 2s &middot; <span id="updated"></span></div>
+  <div style="margin-bottom:1rem">
+    <button onclick="toggleNew()">+ New agent</button>
+    <form id="newform" hidden onsubmit="createAgent(event)"
+          style="margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center">
+      <select id="n-type">
+        <option value="claude">claude</option>
+        <option value="codex">codex</option>
+        <option value="gemini">gemini</option>
+      </select>
+      <input id="n-ws" placeholder="workspace path" value="." style="flex:1; min-width:14rem">
+      <input id="n-model" placeholder="model (optional)">
+      <input id="n-prompt" placeholder="prompt" style="flex:2; min-width:18rem">
+      <label style="font-size:.85rem"><input type="checkbox" id="n-isolate"> isolate</label>
+      <button type="submit">Start</button>
+    </form>
+  </div>
   <div class="counts" id="counts"></div>
   <table>
     <thead><tr>
       <th>ID</th><th>Type</th><th>Model</th><th>Status</th>
-      <th>Runtime</th><th>Tokens</th><th>Cost</th><th>Task</th>
+      <th>Runtime</th><th>Tokens</th><th>Cost</th><th>Task</th><th>Actions</th>
     </tr></thead>
     <tbody id="rows"></tbody>
   </table>
@@ -66,6 +91,7 @@ pub const PAGE: &str = r#"<!doctype html>
   <div id="detail" hidden>
     <div class="detail-head">
       <span class="id" id="d-id"></span>
+      <button title="Copy full ID" onclick="copyId(selected)">⧉ copy id</button>
       <span class="status" id="d-status"></span>
       <span class="grow"></span>
       <button onclick="loadDiff()">Diff</button>
@@ -73,7 +99,12 @@ pub const PAGE: &str = r#"<!doctype html>
       <button onclick="act('stop')">Stop</button>
       <button onclick="closeDetail()">Close</button>
     </div>
-    <pre class="logs" id="d-logs">Loading…</pre>
+    <div class="tabs">
+      <button id="tab-logs" class="tab" onclick="showTab('logs')">Logs</button>
+      <button id="tab-term" class="tab active" onclick="showTab('term')">Terminal</button>
+    </div>
+    <pre class="logs" id="d-logs" hidden>Loading…</pre>
+    <div id="d-term"></div>
     <div class="reply">
       <input id="d-reply" placeholder="Reply or approve (Enter to send)…" onkeydown="if(event.key==='Enter')sendReply()">
       <button onclick="sendReply()">Send</button>
@@ -86,6 +117,44 @@ const ORDER = { waitingforinput: 0, stuck: 1, error: 2, starting: 3, running: 4,
 let selected = null;
 let lastStatus = {};
 let token = localStorage.getItem("kaiju_token") || "";
+let term = null, ws = null, activeTab = "term";
+
+function showTab(which) {
+  activeTab = which;
+  const onTerm = which === "term";
+  document.getElementById("tab-logs").classList.toggle("active", !onTerm);
+  document.getElementById("tab-term").classList.toggle("active", onTerm);
+  document.getElementById("d-logs").hidden = onTerm;
+  document.getElementById("d-term").hidden = !onTerm;
+  if (onTerm) openTerminal(); else { closeTerminal(); refreshDetail(); }
+}
+
+async function openTerminal() {
+  closeTerminal();
+  if (!selected || !window.Terminal) return;
+  let cols = 80, rows = 24;
+  try {
+    const res = await api("/agents/" + selected + "/terminal/size");
+    if (res.ok) { const s = await res.json(); cols = s.cols || 80; rows = s.rows || 24; }
+  } catch (e) { /* use defaults */ }
+  term = new Terminal({ cols, rows, fontSize: 13, cursorBlink: true,
+                        convertEol: false, scrollback: 0 });
+  term.open(document.getElementById("d-term"));
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const q = token ? ("?token=" + encodeURIComponent(token)) : "";
+  ws = new WebSocket(proto + "://" + location.host +
+                     "/agents/" + selected + "/terminal/ws" + q);
+  ws.onmessage = (e) => { if (term) term.write(e.data); };
+  ws.onclose = () => { if (term) term.write("\r\n[disconnected]\r\n"); };
+  term.onData((d) => { if (ws && ws.readyState === 1) ws.send(d); });
+}
+
+function closeTerminal() {
+  if (ws) { try { ws.close(); } catch (e) {} ws = null; }
+  if (term) { try { term.dispose(); } catch (e) {} term = null; }
+  const el = document.getElementById("d-term");
+  if (el) el.innerHTML = "";
+}
 
 // fetch wrapper that attaches the bearer token and, on 401, prompts for one.
 async function api(url, opts) {
@@ -128,7 +197,7 @@ function render(agents) {
     const cost = m.estimated_cost_usd != null ? "$" + m.estimated_cost_usd.toFixed(2) : "-";
     const toks = m.tokens_used != null ? m.tokens_used.toLocaleString() : "-";
     return `<tr class="${attn}${sel}" onclick="select('${a.id}')">
-      <td class="id">${a.id.slice(0,10)}</td>
+      <td class="id" title="${a.id}">${a.id.slice(0,10)}</td>
       <td>${esc(a.agent_type)}</td>
       <td>${esc(a.model) || "-"}</td>
       <td><span class="status s-${a.status}">${esc(a.status)}</span></td>
@@ -136,6 +205,12 @@ function render(agents) {
       <td>${toks}</td>
       <td>${cost}</td>
       <td class="prompt">${esc(a.prompt) || "-"}</td>
+      <td class="actions" onclick="event.stopPropagation()">
+        <button title="Copy full ID" onclick="copyId('${a.id}')">⧉</button>
+        <button title="Interrupt" onclick="rowAct('${a.id}','interrupt')">⎋</button>
+        <button title="Stop" onclick="rowAct('${a.id}','stop')">■</button>
+        <button title="Remove" onclick="removeAgent('${a.id}')">✕</button>
+      </td>
     </tr>`;
   }).join("");
 }
@@ -146,14 +221,16 @@ function select(id) {
   document.getElementById("d-id").textContent = id.slice(0, 10);
   document.getElementById("d-logs").textContent = "Loading…";
   note("");
-  refreshDetail();
+  showTab("term");   // open on the live terminal by default
 }
 function closeDetail() {
+  closeTerminal();
   selected = null;
   document.getElementById("detail").hidden = true;
 }
 
 async function refreshDetail() {
+  if (activeTab === "term") return;
   if (!selected) return;
   const st = lastStatus[selected];
   const badge = document.getElementById("d-status");
@@ -201,6 +278,53 @@ async function act(path) {
     const res = await api("/agents/" + selected + "/" + path, { method: "POST" });
     note(res.ok ? (path + " sent") : ((await res.json()).error || (path + " failed")));
   } catch (e) { note(path + " failed"); }
+}
+
+function toggleNew() {
+  const f = document.getElementById("newform");
+  f.hidden = !f.hidden;
+}
+
+async function createAgent(ev) {
+  ev.preventDefault();
+  const body = {
+    agent_type: document.getElementById("n-type").value,
+    workspace: document.getElementById("n-ws").value,
+    prompt: document.getElementById("n-prompt").value || null,
+    isolate: document.getElementById("n-isolate").checked,
+    auto_start: true,
+  };
+  const model = document.getElementById("n-model").value;
+  if (model) body.model = model;
+  try {
+    const res = await api("/agents", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) { document.getElementById("newform").hidden = true; refresh(); }
+    else { alert((await res.json()).error || "create failed"); }
+  } catch (e) { alert("create failed"); }
+}
+
+async function rowAct(id, path) {
+  try { await api("/agents/" + id + "/" + path, { method: "POST" }); refresh(); }
+  catch (e) { /* ignore */ }
+}
+
+async function removeAgent(id) {
+  if (!confirm("Remove agent " + id.slice(0, 10) + "? (stops it if running)")) return;
+  try {
+    await api("/agents/" + id, { method: "DELETE" });
+    if (id === selected) closeDetail();
+    refresh();
+  } catch (e) { /* ignore */ }
+}
+
+function copyId(id) {
+  navigator.clipboard.writeText(id).then(
+    () => { /* copied */ },
+    () => { window.prompt("Copy agent ID:", id); }
+  );
 }
 
 async function refresh() {

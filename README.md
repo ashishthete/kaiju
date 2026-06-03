@@ -87,6 +87,12 @@ cargo run -p nexus-cli -- cancel <task-id>
 default; override the executable with `KAIJU_CLAUDE_BIN`, `KAIJU_CODEX_BIN`, or
 `KAIJU_GEMINI_BIN` (absolute path) to pin a version or substitute a stub.
 
+The dashboard's agent detail panel has a live **Terminal** tab (xterm.js over a
+WebSocket): real-time colored output and interactive input (type, Enter, Ctrl-C,
+arrows). You can also create agents, run per-row actions (interrupt/stop/remove),
+and copy IDs from the page. The terminal respects `KAIJU_TOKEN`, passed as a
+`?token=` query param on the WebSocket.
+
 ## HTTP API
 
 | Method | Path                     | Description                          |
@@ -101,6 +107,9 @@ default; override the executable with `KAIJU_CLAUDE_BIN`, `KAIJU_CODEX_BIN`, or
 | POST   | `/agents/:id/stop`       | Stop a running agent.                |
 | POST   | `/agents/:id/input`      | Send a follow-up message / approval. |
 | POST   | `/agents/:id/interrupt`  | Send Ctrl-C to the session.          |
+| GET    | `/agents/:id/terminal/ws`   | Live interactive terminal (WebSocket; `?token=`). |
+| GET    | `/agents/:id/terminal/size` | Pane dimensions for sizing the terminal. |
+| GET    | `/assets/xterm.{js,css}`    | Vendored terminal renderer (public). |
 | POST   | `/tasks`                 | Enqueue a task for the pool.         |
 | GET    | `/tasks`                 | List queued/running/finished tasks.  |
 | GET    | `/tasks/:id`             | Get one task.                        |
