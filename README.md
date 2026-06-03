@@ -1,142 +1,198 @@
 # Kaiju
 
-A unified control plane for terminal-based AI coding agents (Claude Code, Codex,
-Gemini CLI, and custom CLIs). Kaiju runs each agent inside its own tmux
-session, tracks status and metrics, and exposes a small HTTP API plus a CLI to
-spawn, observe, and control them.
+**A unified control plane for terminal-based AI coding agents** — Claude Code,
+Codex, Gemini CLI, and any custom CLI. Kaiju runs each agent in its own tmux
+session, supervises it, and gives you one place to spawn, watch, drive, and
+clean up a whole fleet — from a CLI, an HTTP API, or a live web dashboard.
 
-## Architecture
+## Highlights
 
-The workspace follows a layered design (see `CLAUDE.md` for the full rules):
+- **One fleet, many agents.** Spawn Claude/Codex/Gemini (or your own CLI) and
+  track them all together with live status, runtime, token, and cost metrics.
+- **Live web dashboard** with a built-in **interactive terminal** per agent
+  (xterm.js over a WebSocket): real-time colored output, and you can type into
+  it — Enter, Ctrl-C, arrows — to answer prompts and approvals.
+- **Supervision built in.** A background monitor flags `waiting-for-input`,
+  `stuck` (output went quiet), `completed`, and `error`, and alerts you once
+  (console bell, and optionally Slack).
+- **Task queue + bounded pool.** Enqueue a backlog and let Kaiju run N agents at
+  a time.
+- **Safe parallelism.** `--isolate` runs an agent in its own git worktree on a
+  `kaiju/<id>` branch, so concurrent agents in one repo don't collide.
+- **Self-contained & local-first.** Single daemon binary, no external services,
+  optional bearer-token auth, works offline.
 
-| Crate            | Responsibility                                                                 |
-| ---------------- | ------------------------------------------------------------------------------ |
-| `nexus-core`     | Domain types (`Agent`, `AgentStatus`, `AgentMetrics`) and the `Adapter` trait. No IO. |
-| `nexus-adapters` | Per-CLI adapters (Claude, Codex, Gemini) that build commands and parse output.  |
-| `nexus-daemon`   | HTTP API, in-memory store, tmux integration, and the background status monitor. |
-| `nexus-cli`      | `kaiju` command-line client that talks to the daemon.                       |
+## Requirements
 
-Adapters implement a single trait, so adding a new CLI means writing one
-`Adapter` and registering it — no changes to the daemon or CLI.
+- Rust (stable) and Cargo
+- `tmux` and `git` on your `PATH`
+- The agent CLIs you want to drive (`claude`, `codex`, `gemini`) on your `PATH`
 
-## How it works
-
-1. The CLI (or any HTTP client) asks the daemon to create an agent.
-2. The daemon picks the matching adapter and launches the agent as the main
-   process of a detached tmux session. Because the agent *is* the session
-   process, the session ending is a clean "completed" signal.
-3. A background monitor polls each running session every 2 seconds, parses the
-   pane output through the adapter, and updates status, runtime, token, and cost
-   metrics in the store. It marks an agent `completed` when its session ends,
-   `stuck` when a running agent stops producing output, and alerts the operator
-   once (console bell) on waiting-for-input, error, or stuck.
-4. Clients read status/logs/diff, reply with `send`, or attach directly to the
-   tmux session.
-
-## Running
-
-Start the daemon (defaults to `127.0.0.1:7800`, override with `KAIJU_PORT`):
+## Install
 
 ```bash
+# CLI client -> installs the `kaiju` binary
+cargo install --path crates/nexus-cli
+
+# Daemon (run it from the repo, or `cargo install --path crates/nexus-daemon`)
 cargo run -p nexus-daemon
 ```
 
-Then open the live dashboard at <http://127.0.0.1:7800/> — a self-contained page
-that polls the API every 2s, color-codes status, and floats agents that need you
-(waiting/stuck) to the top.
-
-Agent state is persisted to `~/.kaiju/state.json` (override with
-`KAIJU_STATE`). On restart the daemon reloads its agents and marks any whose
-tmux session has since ended as stopped.
-
-To require authentication (recommended before exposing the daemon beyond
-localhost), set `KAIJU_TOKEN` on the daemon; clients then send it via
-`KAIJU_TOKEN` (the CLI) or are prompted for it (the dashboard). `/health` and
-the dashboard page itself stay public. With `KAIJU_TOKEN` unset, auth is off.
-
-Set `KAIJU_SLACK_WEBHOOK` to also receive a Slack message whenever an agent
-needs you (waiting for input, stuck, or errored) — in addition to the daemon's
-console bell.
-
-Use the CLI:
+## Quickstart
 
 ```bash
-cargo run -p nexus-cli -- start --agent-type claude --workspace . --prompt "fix the failing test"
-cargo run -p nexus-cli -- start --agent-type claude --workspace . --isolate --prompt "risky refactor"  # own git worktree
-cargo run -p nexus-cli -- start --agent-type claude --workspace . --batch --prompt "add a test"        # non-interactive, exact metrics
-cargo run -p nexus-cli -- list
-cargo run -p nexus-cli -- status <id>
-cargo run -p nexus-cli -- logs <id>
-cargo run -p nexus-cli -- diff <id>     # what the agent has changed
-cargo run -p nexus-cli -- send <id> "now also update the README"
-cargo run -p nexus-cli -- attach <id>
-cargo run -p nexus-cli -- stop <id>
+# 1. Start the daemon (defaults to 127.0.0.1:7800)
+cargo run -p nexus-daemon
+
+# 2. Open the dashboard
+open http://127.0.0.1:7800/
+
+# 3. Spawn an agent (isolated in its own git worktree)
+kaiju start --agent-type claude --workspace . --isolate --prompt "fix the failing test"
+
+# 4. Watch it, answer it, inspect its changes
+kaiju list
+kaiju logs <id>
+kaiju send <id> "yes, apply that"
+kaiju diff <id>
+
+# 5. Stop / remove when done
+kaiju stop <id>
+kaiju remove <id>
 ```
 
-Or queue a backlog and let a bounded pool work through it (concurrency set by
+…or just drive everything from the dashboard: the detail panel has a live
+**Terminal** tab (type straight into the agent), plus per-row
+interrupt/stop/remove, a "New agent" form, and copy-ID buttons.
+
+## CLI
+
+```bash
+kaiju start  -t claude -w . --prompt "..."            # spawn interactively
+kaiju start  -t claude -w . --isolate --prompt "..."  # own git worktree (kaiju/<id> branch)
+kaiju start  -t claude -w . --batch   --prompt "..."  # non-interactive run, exact metrics
+kaiju list                                            # fleet overview
+kaiju status <id>                                     # status + metrics
+kaiju logs   <id>                                     # recent tmux pane output
+kaiju diff   <id>                                     # what the agent changed (git diff)
+kaiju send   <id> "message"                           # type a reply / approval
+kaiju attach <id>                                     # attach to the tmux session
+kaiju interrupt <id>                                  # Ctrl-C the session
+kaiju stop   <id>                                     # stop
+kaiju remove <id>                                     # stop (if running) + clean up
+```
+
+Point the CLI at a non-default daemon with `--url` (or `KAIJU_URL`).
+
+### Task queue
+
+Enqueue a backlog and let a bounded pool work through it (size set by
 `KAIJU_CONCURRENCY`, default 2):
 
 ```bash
-cargo run -p nexus-cli -- submit --agent-type claude --workspace . --isolate --prompt "task 1"
-cargo run -p nexus-cli -- submit --agent-type claude --workspace . --isolate --prompt "task 2"
-cargo run -p nexus-cli -- queue            # see queued/running/done tasks
-cargo run -p nexus-cli -- cancel <task-id>
+kaiju submit -t claude -w . --isolate --prompt "task 1"
+kaiju submit -t claude -w . --isolate --prompt "task 2"
+kaiju queue                # queued / running / finished tasks
+kaiju cancel <task-id>     # cancel a queued or running task
 ```
 
-`tmux` must be installed and on `PATH`. Each agent CLI is found on `PATH` by
-default; override the executable with `KAIJU_CLAUDE_BIN`, `KAIJU_CODEX_BIN`, or
-`KAIJU_GEMINI_BIN` (absolute path) to pin a version or substitute a stub.
+## Configuration
 
-The dashboard's agent detail panel has a live **Terminal** tab (xterm.js over a
-WebSocket): real-time colored output and interactive input (type, Enter, Ctrl-C,
-arrows). You can also create agents, run per-row actions (interrupt/stop/remove),
-and copy IDs from the page. The terminal respects `KAIJU_TOKEN`, passed as a
-`?token=` query param on the WebSocket.
+All configuration is via environment variables on the **daemon** (clients only
+need `KAIJU_URL` and, if auth is on, `KAIJU_TOKEN`).
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `KAIJU_PORT` | API / dashboard port | `7800` |
+| `KAIJU_STATE` | Agent state file | `~/.kaiju/state.json` |
+| `KAIJU_TASKS` | Task queue file | `~/.kaiju/tasks.json` |
+| `KAIJU_WORKTREES` | Base dir for isolated worktrees | `~/.kaiju/worktrees` |
+| `KAIJU_CONCURRENCY` | Max agents the pool runs at once | `2` |
+| `KAIJU_TOKEN` | Require this bearer token (auth off if unset) | — |
+| `KAIJU_SLACK_WEBHOOK` | Also post "needs you" alerts to Slack | — |
+| `KAIJU_CLAUDE_BIN` / `KAIJU_CODEX_BIN` / `KAIJU_GEMINI_BIN` | Override an agent's executable (pin a version / use a stub) | found on `PATH` |
+| `KAIJU_URL` | (client) Daemon URL | `http://127.0.0.1:7800` |
+
+**Auth:** set `KAIJU_TOKEN` before exposing the daemon beyond localhost. Clients
+then send `Authorization: Bearer <token>` (the CLI reads `KAIJU_TOKEN`; the
+dashboard prompts and stores it). `/health`, the dashboard page, and the
+vendored assets stay public; the terminal WebSocket authenticates via a
+`?token=` query param (browsers can't set headers on a WS handshake).
+
+**State & restart:** the daemon persists its fleet and reloads on restart,
+marking any agent whose tmux session has since ended as stopped.
 
 ## HTTP API
 
-| Method | Path                     | Description                          |
-| ------ | ------------------------ | ------------------------------------ |
-| GET    | `/`                      | Live fleet dashboard (HTML).         |
-| GET    | `/health`                | Liveness check.                      |
-| GET    | `/agents`                | List all agents.                     |
-| POST   | `/agents`                | Create an agent (`auto_start` opt-in). |
-| GET    | `/agents/:id`            | Get one agent.                       |
-| DELETE | `/agents/:id`            | Stop (if running) and remove.        |
-| POST   | `/agents/:id/start`      | Start a created agent.               |
-| POST   | `/agents/:id/stop`       | Stop a running agent.                |
-| POST   | `/agents/:id/input`      | Send a follow-up message / approval. |
-| POST   | `/agents/:id/interrupt`  | Send Ctrl-C to the session.          |
-| GET    | `/agents/:id/terminal/ws`   | Live interactive terminal (WebSocket; `?token=`). |
-| GET    | `/agents/:id/terminal/size` | Pane dimensions for sizing the terminal. |
-| GET    | `/assets/xterm.{js,css}`    | Vendored terminal renderer (public). |
-| POST   | `/tasks`                 | Enqueue a task for the pool.         |
-| GET    | `/tasks`                 | List queued/running/finished tasks.  |
-| GET    | `/tasks/:id`             | Get one task.                        |
-| POST   | `/tasks/:id/cancel`      | Cancel a queued or running task.     |
-| GET    | `/agents/:id/status`     | Status and metrics.                  |
-| GET    | `/agents/:id/logs`       | Recent tmux pane output.             |
-| GET    | `/agents/:id/diff`       | Changes the agent has made (git diff). |
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/` | Live fleet dashboard (HTML). |
+| GET | `/health` | Liveness check. |
+| GET | `/agents` | List all agents. |
+| POST | `/agents` | Create an agent (`auto_start`, `isolate` opt-in). |
+| GET | `/agents/:id` | Get one agent. |
+| DELETE | `/agents/:id` | Stop (if running) and remove. |
+| POST | `/agents/:id/start` | Start a created agent. |
+| POST | `/agents/:id/stop` | Stop a running agent. |
+| POST | `/agents/:id/input` | Send a follow-up message / approval. |
+| POST | `/agents/:id/interrupt` | Send Ctrl-C to the session. |
+| GET | `/agents/:id/status` | Status and metrics. |
+| GET | `/agents/:id/logs` | Recent tmux pane output. |
+| GET | `/agents/:id/diff` | Changes the agent has made (git diff). |
+| GET | `/agents/:id/terminal/ws` | Live interactive terminal (WebSocket; `?token=`). |
+| GET | `/agents/:id/terminal/size` | Pane dimensions for sizing the terminal. |
+| GET | `/assets/xterm.{js,css}` | Vendored terminal renderer (public). |
+| POST | `/tasks` | Enqueue a task for the pool. |
+| GET | `/tasks` | List queued / running / finished tasks. |
+| GET | `/tasks/:id` | Get one task. |
+| POST | `/tasks/:id/cancel` | Cancel a queued or running task. |
+
+## Architecture
+
+A layered Rust workspace (see `CLAUDE.md` for the engineering rules):
+
+| Crate | Responsibility |
+| ----- | -------------- |
+| `nexus-core` | Domain types (`Agent`, `AgentStatus`, `AgentMetrics`) and the `Adapter` trait. No IO. |
+| `nexus-adapters` | Per-CLI adapters (Claude, Codex, Gemini) that build commands and parse output. |
+| `nexus-daemon` | HTTP API, dashboard, in-memory + persisted store, tmux integration, task scheduler, and the background monitor. |
+| `nexus-cli` | The `kaiju` command-line client. |
+
+Adapters implement a single trait, so adding a new CLI means writing one
+`Adapter` and registering it — no daemon or CLI changes.
+
+### How it works
+
+1. A client (CLI, dashboard, or any HTTP caller) asks the daemon to create an agent.
+2. The daemon picks the matching adapter and launches the agent as the **main
+   process of a detached tmux session** — so the session ending is a clean
+   "completed" signal.
+3. A monitor polls each running session every 2s, parses the pane through the
+   adapter, and updates status + metrics. It marks agents `completed` (session
+   ended), `stuck` (output went quiet), and alerts you once on
+   waiting/stuck/error.
+4. Clients read status/logs/diff, reply with `send`, open the live terminal, or
+   attach directly to tmux.
 
 ## Testing
 
 ```bash
-cargo test
+make check     # fmt + clippy (-D warnings) + tests — the full gate
+cargo test     # tests only
+make smoke     # HTTP API contract against a throwaway daemon
+make e2e       # full pipeline with a fake agent (no API keys needed)
 ```
 
-Unit tests live alongside each module; daemon API contract tests are in
-`crates/nexus-daemon/tests/`. For the tmux/git-backed paths there are two
-scripts — `make smoke` (API contract against a throwaway daemon) and `make e2e`
-(full pipeline using a fake agent, no API keys needed). See `VERIFICATION.md`
-for the complete feature-by-feature checklist.
+Unit tests live beside each module; daemon API contract tests are in
+`crates/nexus-daemon/tests/`. See `VERIFICATION.md` for a feature-by-feature
+manual checklist (including the browser terminal).
 
-## Status / limitations
+## Limitations
 
-- Status and metrics are inferred by parsing CLI terminal output, which is
-  heuristic and CLI-version dependent. The waiting-for-input signal is judged
-  from the current prompt line to stay reliable, but completion/cost detection
-  may need tuning per CLI.
-- Pass `--isolate` (or `"isolate": true`) to run an agent in its own git
-  worktree on a `nexus/<id>` branch under `~/.kaiju/worktrees` (override
-  with `KAIJU_WORKTREES`), so parallel agents in one repo don't collide. The
-  worktree is removed when the agent is deleted. Requires a git workspace.
+- Status, cost, and token metrics are inferred by parsing CLI terminal output,
+  which is heuristic and CLI-version dependent. The waiting-for-input signal is
+  judged from the current prompt/menu to stay reliable; completion and cost
+  detection may need tuning per CLI. Prefer `--batch` when you need exact,
+  machine-readable metrics.
+- `--isolate` requires a git workspace; the worktree (branch `kaiju/<id>`) is
+  removed when the agent is deleted.
