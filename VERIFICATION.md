@@ -87,3 +87,15 @@ Confirm the agent boots into its **interactive** TUI with your prompt loaded
 - alerts → `nexus-daemon/src/notify.rs`
 - worktrees → `nexus-daemon/src/worktree.rs` and `server.rs::prepare_run_dir`
 - persistence / reconciliation → `persist.rs`, `store.rs`, `reconcile.rs`
+
+## Browser terminal (dashboard)
+
+Open `http://127.0.0.1:7800/`, select an agent, and confirm:
+- The detail panel opens on the **Terminal** tab with live, colored output that
+  updates within ~250ms of pane changes; **Logs** tab still shows polled text.
+- Typing text + Enter, and Ctrl-C / arrows / Esc, reach the agent.
+- The **Actions** column copies the full ID and runs interrupt/stop/remove.
+- "+ New agent" creates and auto-starts an agent that appears on refresh.
+- With `NEXUS_TOKEN` set, the terminal connects with the token and rejects without it.
+- Backend smoke (no browser): `GET /assets/xterm.js` → 200 `application/javascript`;
+  `GET /agents/:id/terminal/size` → `{"cols":…,"rows":…}`.
