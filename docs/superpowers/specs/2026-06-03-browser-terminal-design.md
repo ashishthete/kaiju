@@ -20,6 +20,8 @@ current page: no second app, no new port.
   arrows, Esc, Tab) reach the agent's tmux session.
 - Stay self-contained: works offline, single binary, respects the existing
   `NEXUS_TOKEN` auth.
+- Manage the fleet from the dashboard itself: create agents, act on them
+  per-row (interrupt/stop/remove), jump to the live terminal, and copy full IDs.
 
 ## Non-goals (YAGNI)
 
@@ -102,6 +104,22 @@ opens a WS to `/agents/:id/terminal/ws?token=…`; `xterm.onData` → `ws.send`;
 incoming frames → `term.write`. Closing the panel or switching agents closes the
 socket.
 
+## Dashboard enhancements (same `dashboard.rs`, added scope)
+
+Beyond the Terminal tab, the fleet view gains operator controls that use
+**existing endpoints only** (no new backend):
+
+- **Create agent from the UI** — a "New agent" button reveals a small form
+  (type, workspace, model, prompt, isolate); submit `POST /agents` with
+  `auto_start: true`, then refresh.
+- **Per-row quick actions** — each row gets Interrupt / Stop / Remove buttons
+  (`POST …/interrupt`, `POST …/stop`, `DELETE /agents/:id`) that
+  `stopPropagation` so they don't also open the detail panel.
+- **Row opens the live Terminal** — clicking a row opens the detail panel on the
+  Terminal tab (the live view is the default), with Logs still one click away.
+- **Full agent ID + copy** — the truncated row ID gets a `title` with the full
+  ID; the detail header shows the full ID with a copy-to-clipboard button.
+
 ## Data flow
 
 ```
@@ -150,7 +168,7 @@ thin.
 | `crates/nexus-daemon/assets/xterm.{js,css}` | **new** (vendored) | no |
 | `crates/nexus-daemon/src/tmux.rs` | +3 helpers | low (additive) |
 | `crates/nexus-daemon/src/api.rs` / `server.rs` | +routes, auth exemptions | **yes** |
-| `crates/nexus-daemon/src/dashboard.rs` | +Terminal tab | **yes** |
+| `crates/nexus-daemon/src/dashboard.rs` | +Terminal tab, +create form, +per-row actions, +copy ID | **yes** |
 | `crates/nexus-daemon/Cargo.toml` | enable axum `ws` | low |
 
 Concurrency note: the three shared files (`api.rs`/`server.rs`, `dashboard.rs`)
@@ -166,3 +184,7 @@ coordinate a quiet window, to avoid clobbering in-flight work.
 3. Works with `NEXUS_TOKEN` set (terminal connects with the token; rejects
    without) and offline (vendored assets).
 4. `make check` green; existing dashboard/log/reply/diff behavior unchanged.
+5. A "New agent" form on the dashboard launches an auto-started agent; it
+   appears in the table on the next refresh.
+6. Per-row Interrupt/Stop/Remove work without opening the detail panel; clicking
+   a row opens the Terminal tab; the full ID can be copied.
