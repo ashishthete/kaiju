@@ -15,5 +15,6 @@ pub mod scheduler;
 pub mod server;
 pub mod store;
 pub mod task_store;
+pub mod terminal;
 pub mod tmux;
 pub mod worktree;
