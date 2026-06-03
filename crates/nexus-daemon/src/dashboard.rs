@@ -13,6 +13,8 @@ pub const PAGE: &str = r#"<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgentNexus</title>
+<link rel="stylesheet" href="/assets/xterm.css">
+<script src="/assets/xterm.js"></script>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, sans-serif; margin: 0; padding: 1.5rem; }
@@ -48,6 +50,11 @@ pub const PAGE: &str = r#"<!doctype html>
   .reply { display: flex; gap: .5rem; margin-top: .75rem; }
   .reply input { flex: 1; font: inherit; padding: .4rem .6rem; border-radius: 5px; border: 1px solid #8886; background: transparent; }
   .note { color: #888; font-size: .8rem; margin-top: .4rem; min-height: 1rem; }
+  .tabs { display: flex; gap: .25rem; margin-bottom: .5rem; }
+  .tab { font-size: .8rem; padding: .25rem .7rem; }
+  .tab.active { background: #3b82f633; border-color: #3b82f6aa; }
+  #d-term { width: 100%; height: 24rem; }
+  #d-term[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -73,7 +80,12 @@ pub const PAGE: &str = r#"<!doctype html>
       <button onclick="act('stop')">Stop</button>
       <button onclick="closeDetail()">Close</button>
     </div>
-    <pre class="logs" id="d-logs">Loading…</pre>
+    <div class="tabs">
+      <button id="tab-logs" class="tab" onclick="showTab('logs')">Logs</button>
+      <button id="tab-term" class="tab active" onclick="showTab('term')">Terminal</button>
+    </div>
+    <pre class="logs" id="d-logs" hidden>Loading…</pre>
+    <div id="d-term"></div>
     <div class="reply">
       <input id="d-reply" placeholder="Reply or approve (Enter to send)…" onkeydown="if(event.key==='Enter')sendReply()">
       <button onclick="sendReply()">Send</button>
@@ -86,6 +98,44 @@ const ORDER = { waitingforinput: 0, stuck: 1, error: 2, starting: 3, running: 4,
 let selected = null;
 let lastStatus = {};
 let token = localStorage.getItem("nexus_token") || "";
+let term = null, ws = null, activeTab = "term";
+
+function showTab(which) {
+  activeTab = which;
+  const onTerm = which === "term";
+  document.getElementById("tab-logs").classList.toggle("active", !onTerm);
+  document.getElementById("tab-term").classList.toggle("active", onTerm);
+  document.getElementById("d-logs").hidden = onTerm;
+  document.getElementById("d-term").hidden = !onTerm;
+  if (onTerm) openTerminal(); else { closeTerminal(); refreshDetail(); }
+}
+
+async function openTerminal() {
+  closeTerminal();
+  if (!selected || !window.Terminal) return;
+  let cols = 80, rows = 24;
+  try {
+    const res = await api("/agents/" + selected + "/terminal/size");
+    if (res.ok) { const s = await res.json(); cols = s.cols || 80; rows = s.rows || 24; }
+  } catch (e) { /* use defaults */ }
+  term = new Terminal({ cols, rows, fontSize: 13, cursorBlink: true,
+                        convertEol: false, scrollback: 0 });
+  term.open(document.getElementById("d-term"));
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const q = token ? ("?token=" + encodeURIComponent(token)) : "";
+  ws = new WebSocket(proto + "://" + location.host +
+                     "/agents/" + selected + "/terminal/ws" + q);
+  ws.onmessage = (e) => { if (term) term.write(e.data); };
+  ws.onclose = () => { if (term) term.write("\r\n[disconnected]\r\n"); };
+  term.onData((d) => { if (ws && ws.readyState === 1) ws.send(d); });
+}
+
+function closeTerminal() {
+  if (ws) { try { ws.close(); } catch (e) {} ws = null; }
+  if (term) { try { term.dispose(); } catch (e) {} term = null; }
+  const el = document.getElementById("d-term");
+  if (el) el.innerHTML = "";
+}
 
 // fetch wrapper that attaches the bearer token and, on 401, prompts for one.
 async function api(url, opts) {
@@ -146,14 +196,16 @@ function select(id) {
   document.getElementById("d-id").textContent = id.slice(0, 10);
   document.getElementById("d-logs").textContent = "Loading…";
   note("");
-  refreshDetail();
+  showTab("term");   // open on the live terminal by default
 }
 function closeDetail() {
+  closeTerminal();
   selected = null;
   document.getElementById("detail").hidden = true;
 }
 
 async function refreshDetail() {
+  if (activeTab === "term") return;
   if (!selected) return;
   const st = lastStatus[selected];
   const badge = document.getElementById("d-status");
