@@ -55,16 +55,34 @@ pub const PAGE: &str = r#"<!doctype html>
   .tab.active { background: #3b82f633; border-color: #3b82f6aa; }
   #d-term { width: 100%; height: 24rem; }
   #d-term[hidden] { display: none; }
+  td.actions { white-space: nowrap; }
+  td.actions button { padding: .15rem .45rem; font-size: .75rem; margin-left: .25rem; }
 </style>
 </head>
 <body>
   <h1>AgentNexus</h1>
   <div class="sub">Live fleet &middot; refreshing every 2s &middot; <span id="updated"></span></div>
+  <div style="margin-bottom:1rem">
+    <button onclick="toggleNew()">+ New agent</button>
+    <form id="newform" hidden onsubmit="createAgent(event)"
+          style="margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center">
+      <select id="n-type">
+        <option value="claude">claude</option>
+        <option value="codex">codex</option>
+        <option value="gemini">gemini</option>
+      </select>
+      <input id="n-ws" placeholder="workspace path" value="." style="flex:1; min-width:14rem">
+      <input id="n-model" placeholder="model (optional)">
+      <input id="n-prompt" placeholder="prompt" style="flex:2; min-width:18rem">
+      <label style="font-size:.85rem"><input type="checkbox" id="n-isolate"> isolate</label>
+      <button type="submit">Start</button>
+    </form>
+  </div>
   <div class="counts" id="counts"></div>
   <table>
     <thead><tr>
       <th>ID</th><th>Type</th><th>Model</th><th>Status</th>
-      <th>Runtime</th><th>Tokens</th><th>Cost</th><th>Task</th>
+      <th>Runtime</th><th>Tokens</th><th>Cost</th><th>Task</th><th>Actions</th>
     </tr></thead>
     <tbody id="rows"></tbody>
   </table>
@@ -73,6 +91,7 @@ pub const PAGE: &str = r#"<!doctype html>
   <div id="detail" hidden>
     <div class="detail-head">
       <span class="id" id="d-id"></span>
+      <button title="Copy full ID" onclick="copyId(selected)">⧉ copy id</button>
       <span class="status" id="d-status"></span>
       <span class="grow"></span>
       <button onclick="loadDiff()">Diff</button>
@@ -178,7 +197,7 @@ function render(agents) {
     const cost = m.estimated_cost_usd != null ? "$" + m.estimated_cost_usd.toFixed(2) : "-";
     const toks = m.tokens_used != null ? m.tokens_used.toLocaleString() : "-";
     return `<tr class="${attn}${sel}" onclick="select('${a.id}')">
-      <td class="id">${a.id.slice(0,10)}</td>
+      <td class="id" title="${a.id}">${a.id.slice(0,10)}</td>
       <td>${esc(a.agent_type)}</td>
       <td>${esc(a.model) || "-"}</td>
       <td><span class="status s-${a.status}">${esc(a.status)}</span></td>
@@ -186,6 +205,12 @@ function render(agents) {
       <td>${toks}</td>
       <td>${cost}</td>
       <td class="prompt">${esc(a.prompt) || "-"}</td>
+      <td class="actions" onclick="event.stopPropagation()">
+        <button title="Copy full ID" onclick="copyId('${a.id}')">⧉</button>
+        <button title="Interrupt" onclick="rowAct('${a.id}','interrupt')">⎋</button>
+        <button title="Stop" onclick="rowAct('${a.id}','stop')">■</button>
+        <button title="Remove" onclick="removeAgent('${a.id}')">✕</button>
+      </td>
     </tr>`;
   }).join("");
 }
@@ -253,6 +278,53 @@ async function act(path) {
     const res = await api("/agents/" + selected + "/" + path, { method: "POST" });
     note(res.ok ? (path + " sent") : ((await res.json()).error || (path + " failed")));
   } catch (e) { note(path + " failed"); }
+}
+
+function toggleNew() {
+  const f = document.getElementById("newform");
+  f.hidden = !f.hidden;
+}
+
+async function createAgent(ev) {
+  ev.preventDefault();
+  const body = {
+    agent_type: document.getElementById("n-type").value,
+    workspace: document.getElementById("n-ws").value,
+    prompt: document.getElementById("n-prompt").value || null,
+    isolate: document.getElementById("n-isolate").checked,
+    auto_start: true,
+  };
+  const model = document.getElementById("n-model").value;
+  if (model) body.model = model;
+  try {
+    const res = await api("/agents", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) { document.getElementById("newform").hidden = true; refresh(); }
+    else { alert((await res.json()).error || "create failed"); }
+  } catch (e) { alert("create failed"); }
+}
+
+async function rowAct(id, path) {
+  try { await api("/agents/" + id + "/" + path, { method: "POST" }); refresh(); }
+  catch (e) { /* ignore */ }
+}
+
+async function removeAgent(id) {
+  if (!confirm("Remove agent " + id.slice(0, 10) + "? (stops it if running)")) return;
+  try {
+    await api("/agents/" + id, { method: "DELETE" });
+    if (id === selected) closeDetail();
+    refresh();
+  } catch (e) { /* ignore */ }
+}
+
+function copyId(id) {
+  navigator.clipboard.writeText(id).then(
+    () => { /* copied */ },
+    () => { window.prompt("Copy agent ID:", id); }
+  );
 }
 
 async function refresh() {
