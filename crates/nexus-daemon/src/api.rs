@@ -24,6 +24,16 @@ pub fn routes() -> Router<AppState> {
         .route("/agents/:id/status", get(get_status))
         .route("/agents/:id/interrupt", post(interrupt_agent))
         .route("/agents/:id/input", post(send_input))
+        .route(
+            "/agents/:id/terminal/ws",
+            get(crate::terminal::terminal_ws),
+        )
+        .route(
+            "/agents/:id/terminal/size",
+            get(crate::terminal::terminal_size),
+        )
+        .route("/assets/xterm.js", get(crate::terminal::xterm_js))
+        .route("/assets/xterm.css", get(crate::terminal::xterm_css))
         .route("/tasks", get(list_tasks).post(create_task))
         .route("/tasks/:id", get(get_task))
         .route("/tasks/:id/cancel", post(cancel_task))
