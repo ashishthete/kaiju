@@ -1,4 +1,4 @@
-# Verifying AgentNexus
+# Verifying Kaiju
 
 Three layers, fastest first. Run them in order — each catches a different class
 of problem.
@@ -48,8 +48,8 @@ flag is right. With `claude` / `codex` / `gemini` installed, in a git repo:
 
 ```bash
 cargo run -p nexus-daemon &                 # watch this terminal for alerts
-agentnexus start --agent-type claude --workspace . --prompt "list the files"
-agentnexus attach <id>                      # Ctrl-b d to detach
+kaiju start --agent-type claude --workspace . --prompt "list the files"
+kaiju attach <id>                      # Ctrl-b d to detach
 ```
 
 Confirm the agent boots into its **interactive** TUI with your prompt loaded
@@ -75,7 +75,7 @@ Confirm the agent boots into its **interactive** TUI with your prompt loaded
 | Background monitor (live) | 3 | status moves off `starting` on its own |
 | Operator alert (live) | 3 | daemon log shows "waiting for your input" |
 | Send-input / reply | 3 | reply drives agent to `completed` |
-| Git worktree isolation | 3 | `nexus/<id>` worktree appears, then is removed |
+| Git worktree isolation | 3 | `kaiju/<id>` worktree appears, then is removed |
 | Persistence across restart | 3 | agent still listed after daemon restart |
 | Real CLI launch flags | 4 | `attach` shows a live interactive TUI |
 

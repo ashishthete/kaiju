@@ -176,7 +176,7 @@ async fn dashboard_served_at_root() {
 
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(bytes.to_vec()).unwrap();
-    assert!(html.contains("AgentNexus"));
+    assert!(html.contains("Kaiju"));
     assert!(html.contains("/agents"));
 }
 

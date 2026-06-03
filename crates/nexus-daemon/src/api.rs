@@ -46,6 +46,10 @@ pub struct CreateAgentRequest {
     /// If true, run the agent in its own git worktree (requires a git workspace).
     #[serde(default)]
     pub isolate: bool,
+    /// If true, run non-interactively via the CLI's structured (stream-json)
+    /// mode. Requires a prompt and an adapter that supports it.
+    #[serde(default)]
+    pub batch: bool,
 }
 
 #[derive(Deserialize)]
@@ -258,6 +262,7 @@ async fn create_agent(
 
     let mut agent = nexus_core::agent::Agent::new(config);
     agent.isolate = req.isolate;
+    agent.batch = req.batch;
     let id = agent.id.clone();
     state.store.insert(agent);
 

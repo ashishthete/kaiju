@@ -2,7 +2,7 @@
 //!
 //! The decision logic ([`should_alert`]) and the message text ([`alert_message`])
 //! are pure and tested; delivery ([`alert`]) is a best-effort side effect — a
-//! console bell always, plus a Slack post when `NEXUS_SLACK_WEBHOOK` is set.
+//! console bell always, plus a Slack post when `KAIJU_SLACK_WEBHOOK` is set.
 
 use nexus_core::agent::{Agent, AgentStatus};
 use tracing::warn;
@@ -32,13 +32,13 @@ pub fn alert_message(agent: &Agent, status: AgentStatus) -> String {
 }
 
 /// Best-effort operator alert: a console bell + warning line always, and a
-/// Slack post when `NEXUS_SLACK_WEBHOOK` is configured.
+/// Slack post when `KAIJU_SLACK_WEBHOOK` is configured.
 pub fn alert(agent: &Agent, status: AgentStatus) {
     let message = alert_message(agent, status);
     // `\x07` rings the terminal bell wherever the daemon is running.
     warn!("\x07{message}");
 
-    if let Ok(url) = std::env::var("NEXUS_SLACK_WEBHOOK") {
+    if let Ok(url) = std::env::var("KAIJU_SLACK_WEBHOOK") {
         if !url.is_empty() {
             post_to_slack(url, message);
         }

@@ -61,42 +61,42 @@ impl Default for AppState {
     }
 }
 
-/// Where the daemon persists agent state. Override with `NEXUS_STATE`.
+/// Where the daemon persists agent state. Override with `KAIJU_STATE`.
 fn state_file_path() -> PathBuf {
-    if let Ok(path) = std::env::var("NEXUS_STATE") {
+    if let Ok(path) = std::env::var("KAIJU_STATE") {
         return PathBuf::from(path);
     }
     if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home).join(".agentnexus").join("state.json");
+        return PathBuf::from(home).join(".kaiju").join("state.json");
     }
-    PathBuf::from("nexus-state.json")
+    PathBuf::from("kaiju-state.json")
 }
 
-/// Base directory for isolated agent worktrees. Override with `NEXUS_WORKTREES`.
+/// Base directory for isolated agent worktrees. Override with `KAIJU_WORKTREES`.
 fn worktrees_base() -> PathBuf {
-    if let Ok(path) = std::env::var("NEXUS_WORKTREES") {
+    if let Ok(path) = std::env::var("KAIJU_WORKTREES") {
         return PathBuf::from(path);
     }
     if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home).join(".agentnexus").join("worktrees");
+        return PathBuf::from(home).join(".kaiju").join("worktrees");
     }
-    PathBuf::from("nexus-worktrees")
+    PathBuf::from("kaiju-worktrees")
 }
 
-/// Where the daemon persists the task queue. Override with `NEXUS_TASKS`.
+/// Where the daemon persists the task queue. Override with `KAIJU_TASKS`.
 fn tasks_file_path() -> PathBuf {
-    if let Ok(path) = std::env::var("NEXUS_TASKS") {
+    if let Ok(path) = std::env::var("KAIJU_TASKS") {
         return PathBuf::from(path);
     }
     if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home).join(".agentnexus").join("tasks.json");
+        return PathBuf::from(home).join(".kaiju").join("tasks.json");
     }
-    PathBuf::from("nexus-tasks.json")
+    PathBuf::from("kaiju-tasks.json")
 }
 
-/// Max agents the scheduler runs at once. Override with `NEXUS_CONCURRENCY`.
+/// Max agents the scheduler runs at once. Override with `KAIJU_CONCURRENCY`.
 fn concurrency() -> usize {
-    std::env::var("NEXUS_CONCURRENCY")
+    std::env::var("KAIJU_CONCURRENCY")
         .ok()
         .and_then(|v| v.parse().ok())
         .filter(|&n| n > 0)
@@ -149,7 +149,7 @@ pub async fn run(addr: SocketAddr) -> Result<()> {
     reconcile_startup(&store);
     let tasks = TaskStore::load_or_new(tasks_file_path())?;
     let mut state = AppState::with_stores(store, tasks);
-    state.auth_token = std::env::var("NEXUS_TOKEN").ok().filter(|t| !t.is_empty());
+    state.auth_token = std::env::var("KAIJU_TOKEN").ok().filter(|t| !t.is_empty());
     if state.auth_token.is_some() {
         info!("token authentication enabled");
     }
@@ -166,7 +166,7 @@ pub async fn run(addr: SocketAddr) -> Result<()> {
 
     let app = build_app(state);
 
-    info!("AgentNexus daemon listening on {addr}");
+    info!("Kaiju daemon listening on {addr}");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await.map_err(NexusError::Io)?;
@@ -201,6 +201,25 @@ pub fn start_agent_internal(state: &AppState, id: &str) -> Result<()> {
         prompt: agent.prompt.clone(),
         extra_args: agent.extra_args.clone(),
     };
+
+    // Batch mode: run the CLI's structured (non-interactive) command and drive
+    // status/metrics from its event stream, instead of an interactive session.
+    if agent.batch {
+        let command = adapter.structured_command(&config).ok_or_else(|| {
+            NexusError::Adapter(format!(
+                "{} has no structured (batch) mode",
+                agent.agent_type
+            ))
+        })?;
+        state.store.mark_started(id, chrono::Utc::now());
+        crate::batch::spawn_batch(
+            state.clone(),
+            id.to_string(),
+            command,
+            agent.agent_type.clone(),
+        );
+        return Ok(());
+    }
 
     // Launch the agent as the tmux session's main process, so the session ends
     // when the agent exits (a clean completion signal).

@@ -24,7 +24,7 @@ impl Adapter for ClaudeAdapter {
         // Launch the interactive TUI (no `-p`/print mode) so the session stays
         // alive and can be supervised. The prompt is passed positionally to seed
         // the first turn.
-        let bin = crate::binary::agent_binary("NEXUS_CLAUDE_BIN", "claude");
+        let bin = crate::binary::agent_binary("KAIJU_CLAUDE_BIN", "claude");
         let mut cmd = format!("cd {} && {bin}", config.workspace.display());
 
         let model = config.model.as_deref().or(self.default_model());
@@ -82,6 +82,27 @@ impl Adapter for ClaudeAdapter {
         }
 
         result
+    }
+
+    fn parse_event(&self, line: &str) -> Option<ParsedOutput> {
+        crate::claude_events::parse_claude_event(line)
+    }
+
+    fn structured_command(&self, config: &AgentConfig) -> Option<String> {
+        // Batch mode is non-interactive, so a prompt is required.
+        let prompt = config.prompt.as_ref()?;
+        let bin = crate::binary::agent_binary("KAIJU_CLAUDE_BIN", "claude");
+        let escaped = prompt.replace('\'', "'\\''");
+
+        let mut cmd = format!(
+            "cd {} && {bin} -p --output-format stream-json --verbose",
+            config.workspace.display()
+        );
+        if let Some(model) = config.model.as_deref().or(self.default_model()) {
+            cmd.push_str(&format!(" --model {model}"));
+        }
+        cmd.push_str(&format!(" '{escaped}'"));
+        Some(cmd)
     }
 
     fn display_name(&self) -> &str {
@@ -151,6 +172,28 @@ mod tests {
         let adapter = ClaudeAdapter;
         let cmd = adapter.build_command(&config(Some("fix the user's login")));
         assert!(cmd.contains("user'\\''s"));
+    }
+
+    #[test]
+    fn structured_command_uses_stream_json_with_prompt() {
+        let adapter = ClaudeAdapter;
+        let cmd = adapter.structured_command(&config(Some("fix the bug"))).unwrap();
+        assert!(cmd.contains("-p --output-format stream-json"));
+        assert!(cmd.contains("--model sonnet"));
+        assert!(cmd.ends_with("'fix the bug'"));
+    }
+
+    #[test]
+    fn structured_command_requires_a_prompt() {
+        let adapter = ClaudeAdapter;
+        let cfg = AgentConfig {
+            agent_type: AgentType::Claude,
+            model: None,
+            workspace: PathBuf::from("/tmp"),
+            prompt: None,
+            extra_args: vec![],
+        };
+        assert!(adapter.structured_command(&cfg).is_none());
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! AgentNexus daemon library.
+//! Kaiju daemon library.
 //!
 //! Exposes the HTTP API, agent store, tmux integration, and the background
 //! monitor as a library so they can be exercised by integration tests. The
@@ -6,6 +6,7 @@
 
 pub mod api;
 pub mod auth;
+pub mod batch;
 pub mod dashboard;
 pub mod monitor;
 pub mod notify;

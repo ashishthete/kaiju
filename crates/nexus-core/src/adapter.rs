@@ -159,6 +159,24 @@ pub trait Adapter: Send + Sync {
     /// Return `ParsedOutput::default()` if nothing useful can be extracted.
     fn parse_output(&self, output: &str) -> ParsedOutput;
 
+    /// Parse one line of the CLI's *structured* output stream (e.g. JSON), when
+    /// the CLI is run in a structured mode. This yields precise status/metrics
+    /// instead of the heuristics in [`parse_output`].
+    ///
+    /// Default: the CLI exposes no structured stream, so nothing is parsed.
+    fn parse_event(&self, _line: &str) -> Option<ParsedOutput> {
+        None
+    }
+
+    /// Build the shell command to run this CLI in *structured* (non-interactive)
+    /// mode, whose stdout is fed line-by-line to [`parse_event`]. Used by the
+    /// batch executor for fire-and-forget tasks with precise metrics.
+    ///
+    /// Default: the CLI has no structured mode (returns `None`).
+    fn structured_command(&self, _config: &AgentConfig) -> Option<String> {
+        None
+    }
+
     /// Human-readable name for this adapter.
     fn display_name(&self) -> &str;
 

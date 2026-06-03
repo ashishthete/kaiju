@@ -12,7 +12,7 @@ pub const PAGE: &str = r#"<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AgentNexus</title>
+<title>Kaiju</title>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, sans-serif; margin: 0; padding: 1.5rem; }
@@ -51,7 +51,7 @@ pub const PAGE: &str = r#"<!doctype html>
 </style>
 </head>
 <body>
-  <h1>AgentNexus</h1>
+  <h1>Kaiju</h1>
   <div class="sub">Live fleet &middot; refreshing every 2s &middot; <span id="updated"></span></div>
   <div class="counts" id="counts"></div>
   <table>
@@ -85,7 +85,7 @@ pub const PAGE: &str = r#"<!doctype html>
 const ORDER = { waitingforinput: 0, stuck: 1, error: 2, starting: 3, running: 4, completed: 5, stopped: 6 };
 let selected = null;
 let lastStatus = {};
-let token = localStorage.getItem("nexus_token") || "";
+let token = localStorage.getItem("kaiju_token") || "";
 
 // fetch wrapper that attaches the bearer token and, on 401, prompts for one.
 async function api(url, opts) {
@@ -95,7 +95,7 @@ async function api(url, opts) {
   const res = await window.fetch(url, Object.assign({}, opts, { headers }));
   if (res.status === 401) {
     const t = prompt("Daemon API token:");
-    if (t) { token = t; localStorage.setItem("nexus_token", t); return api(url, opts); }
+    if (t) { token = t; localStorage.setItem("kaiju_token", t); return api(url, opts); }
   }
   return res;
 }

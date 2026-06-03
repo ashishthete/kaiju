@@ -11,7 +11,7 @@ async fn main() {
         )
         .init();
 
-    let port: u16 = std::env::var("NEXUS_PORT")
+    let port: u16 = std::env::var("KAIJU_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(7800);

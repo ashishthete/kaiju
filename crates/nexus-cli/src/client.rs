@@ -90,6 +90,7 @@ impl NexusClient {
         model: Option<String>,
         prompt: Option<String>,
         isolate: bool,
+        batch: bool,
     ) -> Result<()> {
         let resp = self
             .http
@@ -101,6 +102,7 @@ impl NexusClient {
                 "prompt": prompt,
                 "auto_start": true,
                 "isolate": isolate,
+                "batch": batch,
             }))
             .send()
             .await?;
@@ -117,7 +119,7 @@ impl NexusClient {
         println!("  Session: {}", agent.session_name);
         println!("  Status:  {}", agent.status);
         println!();
-        println!("Attach with: agentnexus attach {}", agent.id);
+        println!("Attach with: kaiju attach {}", agent.id);
 
         Ok(())
     }

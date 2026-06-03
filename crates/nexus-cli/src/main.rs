@@ -4,17 +4,17 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "agentnexus",
-    about = "AgentNexus - Unified control plane for AI coding agents",
+    name = "kaiju",
+    about = "Kaiju - Unified control plane for AI coding agents",
     version
 )]
 struct Cli {
     /// Daemon API URL
-    #[arg(long, env = "NEXUS_URL", default_value = "http://127.0.0.1:7800")]
+    #[arg(long, env = "KAIJU_URL", default_value = "http://127.0.0.1:7800")]
     url: String,
 
     /// Bearer token for an authenticated daemon
-    #[arg(long, env = "NEXUS_TOKEN")]
+    #[arg(long, env = "KAIJU_TOKEN")]
     token: Option<String>,
 
     #[command(subcommand)]
@@ -44,6 +44,10 @@ enum Commands {
         /// Run the agent in its own git worktree (requires a git workspace)
         #[arg(long)]
         isolate: bool,
+
+        /// Run non-interactively via the CLI's structured mode (precise metrics)
+        #[arg(long)]
+        batch: bool,
     },
 
     /// List all agents
@@ -148,6 +152,7 @@ async fn main() {
             model,
             prompt,
             isolate,
+            batch,
         } => {
             let workspace = if workspace == "." {
                 std::env::current_dir().unwrap().display().to_string()
@@ -155,7 +160,7 @@ async fn main() {
                 workspace
             };
             client
-                .start(&agent_type, &workspace, model, prompt, isolate)
+                .start(&agent_type, &workspace, model, prompt, isolate, batch)
                 .await
         }
         Commands::List { active } => client.list(active).await,

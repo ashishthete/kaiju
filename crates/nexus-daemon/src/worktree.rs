@@ -20,9 +20,9 @@ fn id_prefix(agent_id: &str) -> &str {
     &agent_id[..len]
 }
 
-/// Branch name for an agent's isolated worktree, e.g. `nexus/1a2b3c4d`.
+/// Branch name for an agent's isolated worktree, e.g. `kaiju/1a2b3c4d`.
 pub fn branch_name(agent_id: &str) -> String {
-    format!("nexus/{}", id_prefix(agent_id))
+    format!("kaiju/{}", id_prefix(agent_id))
 }
 
 /// Directory for an agent's worktree, under `base`.
@@ -133,20 +133,20 @@ mod tests {
 
     #[test]
     fn branch_name_uses_id_prefix() {
-        assert_eq!(branch_name("1a2b3c4d5e6f7890"), "nexus/1a2b3c4d");
+        assert_eq!(branch_name("1a2b3c4d5e6f7890"), "kaiju/1a2b3c4d");
     }
 
     #[test]
     fn branch_name_handles_short_id() {
-        assert_eq!(branch_name("abc"), "nexus/abc");
+        assert_eq!(branch_name("abc"), "kaiju/abc");
     }
 
     #[test]
     fn worktree_path_joins_base_and_prefix() {
-        let base = Path::new("/home/u/.agentnexus/worktrees");
+        let base = Path::new("/home/u/.kaiju/worktrees");
         assert_eq!(
             worktree_path(base, "1a2b3c4d5e6f"),
-            PathBuf::from("/home/u/.agentnexus/worktrees/1a2b3c4d")
+            PathBuf::from("/home/u/.kaiju/worktrees/1a2b3c4d")
         );
     }
 }

@@ -19,7 +19,7 @@ impl Adapter for GeminiAdapter {
     fn build_command(&self, config: &AgentConfig) -> String {
         // `-i` seeds the first prompt and stays interactive, unlike `-p` which
         // runs once and exits. Keeps the session alive for supervision.
-        let bin = crate::binary::agent_binary("NEXUS_GEMINI_BIN", "gemini");
+        let bin = crate::binary::agent_binary("KAIJU_GEMINI_BIN", "gemini");
         let mut cmd = format!("cd {} && {bin}", config.workspace.display());
 
         let model = config.model.as_deref().or(self.default_model());

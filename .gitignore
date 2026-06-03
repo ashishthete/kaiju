@@ -2,3 +2,12 @@
 *.swp
 *.swo
 .env
+
+# Local Claude Code settings (machine-specific, not for the repo)
+.claude/
+
+# Runtime state written when HOME is unset (fallback names)
+/kaiju-state.json
+/kaiju-tasks.json
+/kaiju-worktrees/
+*.log

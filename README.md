@@ -1,7 +1,7 @@
-# AgentNexus
+# Kaiju
 
 A unified control plane for terminal-based AI coding agents (Claude Code, Codex,
-Gemini CLI, and custom CLIs). AgentNexus runs each agent inside its own tmux
+Gemini CLI, and custom CLIs). Kaiju runs each agent inside its own tmux
 session, tracks status and metrics, and exposes a small HTTP API plus a CLI to
 spawn, observe, and control them.
 
@@ -14,7 +14,7 @@ The workspace follows a layered design (see `CLAUDE.md` for the full rules):
 | `nexus-core`     | Domain types (`Agent`, `AgentStatus`, `AgentMetrics`) and the `Adapter` trait. No IO. |
 | `nexus-adapters` | Per-CLI adapters (Claude, Codex, Gemini) that build commands and parse output.  |
 | `nexus-daemon`   | HTTP API, in-memory store, tmux integration, and the background status monitor. |
-| `nexus-cli`      | `agentnexus` command-line client that talks to the daemon.                       |
+| `nexus-cli`      | `kaiju` command-line client that talks to the daemon.                       |
 
 Adapters implement a single trait, so adding a new CLI means writing one
 `Adapter` and registering it — no changes to the daemon or CLI.
@@ -35,7 +35,7 @@ Adapters implement a single trait, so adding a new CLI means writing one
 
 ## Running
 
-Start the daemon (defaults to `127.0.0.1:7800`, override with `NEXUS_PORT`):
+Start the daemon (defaults to `127.0.0.1:7800`, override with `KAIJU_PORT`):
 
 ```bash
 cargo run -p nexus-daemon
@@ -45,16 +45,16 @@ Then open the live dashboard at <http://127.0.0.1:7800/> — a self-contained pa
 that polls the API every 2s, color-codes status, and floats agents that need you
 (waiting/stuck) to the top.
 
-Agent state is persisted to `~/.agentnexus/state.json` (override with
-`NEXUS_STATE`). On restart the daemon reloads its agents and marks any whose
+Agent state is persisted to `~/.kaiju/state.json` (override with
+`KAIJU_STATE`). On restart the daemon reloads its agents and marks any whose
 tmux session has since ended as stopped.
 
 To require authentication (recommended before exposing the daemon beyond
-localhost), set `NEXUS_TOKEN` on the daemon; clients then send it via
-`NEXUS_TOKEN` (the CLI) or are prompted for it (the dashboard). `/health` and
-the dashboard page itself stay public. With `NEXUS_TOKEN` unset, auth is off.
+localhost), set `KAIJU_TOKEN` on the daemon; clients then send it via
+`KAIJU_TOKEN` (the CLI) or are prompted for it (the dashboard). `/health` and
+the dashboard page itself stay public. With `KAIJU_TOKEN` unset, auth is off.
 
-Set `NEXUS_SLACK_WEBHOOK` to also receive a Slack message whenever an agent
+Set `KAIJU_SLACK_WEBHOOK` to also receive a Slack message whenever an agent
 needs you (waiting for input, stuck, or errored) — in addition to the daemon's
 console bell.
 
@@ -63,6 +63,7 @@ Use the CLI:
 ```bash
 cargo run -p nexus-cli -- start --agent-type claude --workspace . --prompt "fix the failing test"
 cargo run -p nexus-cli -- start --agent-type claude --workspace . --isolate --prompt "risky refactor"  # own git worktree
+cargo run -p nexus-cli -- start --agent-type claude --workspace . --batch --prompt "add a test"        # non-interactive, exact metrics
 cargo run -p nexus-cli -- list
 cargo run -p nexus-cli -- status <id>
 cargo run -p nexus-cli -- logs <id>
@@ -73,7 +74,7 @@ cargo run -p nexus-cli -- stop <id>
 ```
 
 Or queue a backlog and let a bounded pool work through it (concurrency set by
-`NEXUS_CONCURRENCY`, default 2):
+`KAIJU_CONCURRENCY`, default 2):
 
 ```bash
 cargo run -p nexus-cli -- submit --agent-type claude --workspace . --isolate --prompt "task 1"
@@ -83,8 +84,8 @@ cargo run -p nexus-cli -- cancel <task-id>
 ```
 
 `tmux` must be installed and on `PATH`. Each agent CLI is found on `PATH` by
-default; override the executable with `NEXUS_CLAUDE_BIN`, `NEXUS_CODEX_BIN`, or
-`NEXUS_GEMINI_BIN` (absolute path) to pin a version or substitute a stub.
+default; override the executable with `KAIJU_CLAUDE_BIN`, `KAIJU_CODEX_BIN`, or
+`KAIJU_GEMINI_BIN` (absolute path) to pin a version or substitute a stub.
 
 ## HTTP API
 
@@ -127,6 +128,6 @@ for the complete feature-by-feature checklist.
   from the current prompt line to stay reliable, but completion/cost detection
   may need tuning per CLI.
 - Pass `--isolate` (or `"isolate": true`) to run an agent in its own git
-  worktree on a `nexus/<id>` branch under `~/.agentnexus/worktrees` (override
-  with `NEXUS_WORKTREES`), so parallel agents in one repo don't collide. The
+  worktree on a `nexus/<id>` branch under `~/.kaiju/worktrees` (override
+  with `KAIJU_WORKTREES`), so parallel agents in one repo don't collide. The
   worktree is removed when the agent is deleted. Requires a git workspace.

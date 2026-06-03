@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn mutations_persist_and_reload_from_disk() {
         let mut path = std::env::temp_dir();
-        path.push(format!("nexus-store-test-{}.json", std::process::id()));
+        path.push(format!("kaiju-store-test-{}.json", std::process::id()));
         let _ = std::fs::remove_file(&path);
 
         let id = {

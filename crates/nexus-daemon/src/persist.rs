@@ -40,7 +40,7 @@ mod tests {
 
     fn temp_path(name: &str) -> PathBuf {
         let mut path = std::env::temp_dir();
-        let unique = format!("nexus-test-{}-{}.json", std::process::id(), name);
+        let unique = format!("kaiju-test-{}-{}.json", std::process::id(), name);
         path.push(unique);
         path
     }

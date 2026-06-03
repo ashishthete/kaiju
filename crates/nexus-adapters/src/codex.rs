@@ -17,7 +17,7 @@ impl Adapter for CodexAdapter {
     }
 
     fn build_command(&self, config: &AgentConfig) -> String {
-        let bin = crate::binary::agent_binary("NEXUS_CODEX_BIN", "codex");
+        let bin = crate::binary::agent_binary("KAIJU_CODEX_BIN", "codex");
         let mut cmd = format!("cd {} && {bin}", config.workspace.display());
 
         let model = config.model.as_deref().or(self.default_model());

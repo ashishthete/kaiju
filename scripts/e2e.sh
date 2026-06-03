@@ -14,7 +14,7 @@
 #
 set -euo pipefail
 
-PORT="${NEXUS_PORT:-7812}"
+PORT="${KAIJU_PORT:-7812}"
 URL="http://127.0.0.1:${PORT}"
 ROOT="$(mktemp -d)"
 BIN="$ROOT/bin"
@@ -32,19 +32,19 @@ trap cleanup EXIT
 
 # Use the installed CLI if present (fast), else fall back to cargo run.
 cli() {
-  if command -v agentnexus >/dev/null 2>&1; then
-    agentnexus --url "$URL" "$@"
+  if command -v kaiju >/dev/null 2>&1; then
+    kaiju --url "$URL" "$@"
   else
     cargo run -q -p nexus-cli -- --url "$URL" "$@"
   fi
 }
 
 start_daemon() {
-  # NEXUS_CLAUDE_BIN pins the fake agent by absolute path. PATH alone is not
+  # KAIJU_CLAUDE_BIN pins the fake agent by absolute path. PATH alone is not
   # enough: tmux spawns a login shell that re-sources the user's profile and can
   # reorder PATH ahead of our temp dir, launching the real `claude` instead.
-  NEXUS_PORT="$PORT" NEXUS_STATE="$STATE" NEXUS_WORKTREES="$WT" \
-    NEXUS_CLAUDE_BIN="$BIN/claude" \
+  KAIJU_PORT="$PORT" KAIJU_STATE="$STATE" KAIJU_WORKTREES="$WT" \
+    KAIJU_CLAUDE_BIN="$BIN/claude" \
     cargo run -q -p nexus-daemon >>"$LOG" 2>&1 &
   DAEMON_PID=$!
   for _ in $(seq 1 60); do

@@ -10,7 +10,7 @@
 #
 set -euo pipefail
 
-PORT="${NEXUS_PORT:-7811}"
+PORT="${KAIJU_PORT:-7811}"
 URL="http://127.0.0.1:${PORT}"
 TMP="$(mktemp -d)"
 STATE="$TMP/state.json"
@@ -42,7 +42,7 @@ expect_status() {
 }
 
 echo "Starting daemon on :$PORT ..."
-NEXUS_PORT="$PORT" NEXUS_STATE="$STATE" cargo run -q -p nexus-daemon >"$LOG" 2>&1 &
+KAIJU_PORT="$PORT" KAIJU_STATE="$STATE" cargo run -q -p nexus-daemon >"$LOG" 2>&1 &
 DAEMON_PID=$!
 for _ in $(seq 1 60); do
   curl -sf "$URL/health" >/dev/null 2>&1 && break || sleep 1

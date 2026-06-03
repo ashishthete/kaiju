@@ -101,6 +101,10 @@ pub struct Agent {
     /// The git worktree the agent runs in, once created. `None` if not isolated.
     #[serde(default)]
     pub worktree_path: Option<PathBuf>,
+    /// Run non-interactively via the CLI's structured (stream-json) mode instead
+    /// of an interactive tmux session.
+    #[serde(default)]
+    pub batch: bool,
     pub created_at: DateTime<Utc>,
     /// Set when the agent's CLI process is actually launched. `None` until started.
     pub started_at: Option<DateTime<Utc>>,
@@ -111,7 +115,7 @@ pub struct Agent {
 impl Agent {
     pub fn new(config: AgentConfig) -> Self {
         let id = Uuid::new_v4().to_string();
-        let session_name = format!("nexus-{}-{}", config.agent_type, &id[..8]);
+        let session_name = format!("kaiju-{}-{}", config.agent_type, &id[..8]);
         let now = Utc::now();
 
         Self {
@@ -125,6 +129,7 @@ impl Agent {
             extra_args: config.extra_args,
             isolate: false,
             worktree_path: None,
+            batch: false,
             created_at: now,
             started_at: None,
             updated_at: now,
@@ -214,7 +219,7 @@ mod tests {
         });
 
         assert_eq!(agent.status, AgentStatus::Starting);
-        assert!(agent.session_name.starts_with("nexus-claude-"));
+        assert!(agent.session_name.starts_with("kaiju-claude-"));
         assert_eq!(agent.metrics.runtime_secs, 0);
         assert!(agent.metrics.tokens_used.is_none());
         assert!(agent.started_at.is_none());

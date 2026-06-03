@@ -103,7 +103,7 @@ impl TmuxManager {
             .unwrap_or(false)
     }
 
-    /// List all active tmux sessions with the "nexus-" prefix.
+    /// List all active tmux sessions with the "kaiju-" prefix.
     pub fn list_nexus_sessions() -> Result<Vec<String>> {
         let output = Command::new("tmux")
             .args(["list-sessions", "-F", "#{session_name}"])
@@ -116,7 +116,7 @@ impl TmuxManager {
 
         let sessions = String::from_utf8_lossy(&output.stdout)
             .lines()
-            .filter(|s| s.starts_with("nexus-"))
+            .filter(|s| s.starts_with("kaiju-"))
             .map(|s| s.to_string())
             .collect();
 

@@ -1,6 +1,6 @@
 //! Optional bearer-token authentication.
 //!
-//! When `NEXUS_TOKEN` is configured, every request to a protected route must
+//! When `KAIJU_TOKEN` is configured, every request to a protected route must
 //! carry `Authorization: Bearer <token>`. With no token configured, auth is
 //! disabled (the localhost-development default). The decision is a pure,
 //! tested function; the middleware is a thin wrapper.

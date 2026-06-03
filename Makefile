@@ -1,10 +1,10 @@
-# AgentNexus developer tasks.
+# Kaiju developer tasks.
 # Run `make help` to list available targets.
 
 .DEFAULT_GOAL := help
 .PHONY: help build test fmt fmt-check lint check daemon cli install smoke clean
 
-NEXUS_URL ?= http://127.0.0.1:7800
+KAIJU_URL ?= http://127.0.0.1:7800
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -27,13 +27,13 @@ lint: ## Run clippy, treating warnings as errors
 
 check: fmt-check lint test ## Run the full pre-commit gate
 
-daemon: ## Run the daemon (NEXUS_PORT overrides the port)
+daemon: ## Run the daemon (KAIJU_PORT overrides the port)
 	cargo run -p nexus-daemon
 
 cli: ## Run the CLI; pass args via ARGS, e.g. make cli ARGS="list"
 	cargo run -p nexus-cli -- $(ARGS)
 
-install: ## Install the agentnexus CLI onto your PATH
+install: ## Install the kaiju CLI onto your PATH
 	cargo install --path crates/nexus-cli
 
 smoke: ## API contract smoke test (boots a throwaway daemon, no agent CLIs)
