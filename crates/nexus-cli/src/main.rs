@@ -36,6 +36,10 @@ enum Commands {
         /// Prompt/task for the agent
         #[arg(short, long)]
         prompt: Option<String>,
+
+        /// Run the agent in its own git worktree (requires a git workspace)
+        #[arg(long)]
+        isolate: bool,
     },
 
     /// List all agents
@@ -61,6 +65,14 @@ enum Commands {
     Stop {
         /// Agent ID
         id: String,
+    },
+
+    /// Send a follow-up message or approval to a running agent
+    Send {
+        /// Agent ID
+        id: String,
+        /// Message text to send
+        message: String,
     },
 
     /// Send interrupt (Ctrl-C) to an agent
@@ -93,6 +105,7 @@ async fn main() {
             workspace,
             model,
             prompt,
+            isolate,
         } => {
             let workspace = if workspace == "." {
                 std::env::current_dir()
@@ -102,12 +115,15 @@ async fn main() {
             } else {
                 workspace
             };
-            client.start(&agent_type, &workspace, model, prompt).await
+            client
+                .start(&agent_type, &workspace, model, prompt, isolate)
+                .await
         }
         Commands::List { active } => client.list(active).await,
         Commands::Status { id } => client.status(&id).await,
         Commands::Logs { id } => client.logs(&id).await,
         Commands::Stop { id } => client.stop(&id).await,
+        Commands::Send { id, message } => client.send(&id, &message).await,
         Commands::Interrupt { id } => client.interrupt(&id).await,
         Commands::Remove { id } => client.remove(&id).await,
         Commands::Attach { id } => client.attach(&id).await,

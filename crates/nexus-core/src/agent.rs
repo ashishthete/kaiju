@@ -58,21 +58,11 @@ impl AgentStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentMetrics {
     pub runtime_secs: u64,
     pub tokens_used: Option<u64>,
     pub estimated_cost_usd: Option<f64>,
-}
-
-impl Default for AgentMetrics {
-    fn default() -> Self {
-        Self {
-            runtime_secs: 0,
-            tokens_used: None,
-            estimated_cost_usd: None,
-        }
-    }
 }
 
 /// Configuration for spawning a new agent.
@@ -96,6 +86,12 @@ pub struct Agent {
     pub session_name: String,
     pub prompt: Option<String>,
     pub extra_args: Vec<String>,
+    /// Run the agent in an isolated git worktree (set at creation).
+    #[serde(default)]
+    pub isolate: bool,
+    /// The git worktree the agent runs in, once created. `None` if not isolated.
+    #[serde(default)]
+    pub worktree_path: Option<PathBuf>,
     pub created_at: DateTime<Utc>,
     /// Set when the agent's CLI process is actually launched. `None` until started.
     pub started_at: Option<DateTime<Utc>>,
@@ -118,6 +114,8 @@ impl Agent {
             session_name,
             prompt: config.prompt,
             extra_args: config.extra_args,
+            isolate: false,
+            worktree_path: None,
             created_at: now,
             started_at: None,
             updated_at: now,
@@ -130,6 +128,12 @@ impl Agent {
         self.started_at = Some(now);
         self.status = AgentStatus::Running;
         self.updated_at = now;
+    }
+
+    /// Record the worktree the agent is running in.
+    pub fn set_worktree(&mut self, path: PathBuf) {
+        self.worktree_path = Some(path);
+        self.updated_at = Utc::now();
     }
 
     pub fn update_status(&mut self, status: AgentStatus) {

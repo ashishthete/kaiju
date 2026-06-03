@@ -1,4 +1,4 @@
-use nexus_core::adapter::{Adapter, ParsedOutput};
+use nexus_core::adapter::{last_non_empty_line, looks_like_prompt, Adapter, ParsedOutput};
 use nexus_core::agent::{AgentConfig, AgentStatus, AgentType};
 
 /// Adapter for Google Gemini CLI.
@@ -14,6 +14,8 @@ impl Adapter for GeminiAdapter {
     }
 
     fn build_command(&self, config: &AgentConfig) -> String {
+        // `-i` seeds the first prompt and stays interactive, unlike `-p` which
+        // runs once and exits. Keeps the session alive for supervision.
         let mut cmd = format!("cd {} && gemini", config.workspace.display());
 
         let model = config.model.as_deref().or(self.default_model());
@@ -23,7 +25,7 @@ impl Adapter for GeminiAdapter {
 
         if let Some(prompt) = &config.prompt {
             let escaped = prompt.replace('\'', "'\\''");
-            cmd.push_str(&format!(" -p '{escaped}'"));
+            cmd.push_str(&format!(" -i '{escaped}'"));
         }
 
         for arg in &config.extra_args {
@@ -35,14 +37,18 @@ impl Adapter for GeminiAdapter {
 
     fn parse_output(&self, output: &str) -> ParsedOutput {
         let mut result = ParsedOutput::default();
+        let last = last_non_empty_line(output);
 
-        if output.contains("Done") || output.contains("completed") {
-            result.status = Some(AgentStatus::Completed);
-        } else if output.contains("?") && output.contains("Y/n") {
+        if looks_like_prompt(last) {
             result.status = Some(AgentStatus::WaitingForInput);
-        } else if output.contains("ERROR") || output.contains("error:") {
+        } else if output.contains("Done") || output.contains("completed") {
+            result.status = Some(AgentStatus::Completed);
+        } else if last.contains("ERROR") || last.contains("error:") {
             result.status = Some(AgentStatus::Error);
-        } else if output.contains("Generating") || output.contains("Analyzing") || output.contains("Thinking") {
+        } else if output.contains("Generating")
+            || output.contains("Analyzing")
+            || output.contains("Thinking")
+        {
             result.status = Some(AgentStatus::Running);
         }
 
@@ -71,7 +77,7 @@ mod tests {
         };
         assert_eq!(
             adapter.build_command(&config),
-            "cd /tmp/work && gemini --model pro -p 'review this code'"
+            "cd /tmp/work && gemini --model pro -i 'review this code'"
         );
     }
 

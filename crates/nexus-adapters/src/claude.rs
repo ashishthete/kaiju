@@ -1,4 +1,4 @@
-use nexus_core::adapter::{Adapter, ParsedOutput};
+use nexus_core::adapter::{last_non_empty_line, looks_like_prompt, Adapter, ParsedOutput};
 use nexus_core::agent::{AgentConfig, AgentStatus, AgentType};
 use regex::Regex;
 
@@ -18,6 +18,9 @@ impl Adapter for ClaudeAdapter {
     }
 
     fn build_command(&self, config: &AgentConfig) -> String {
+        // Launch the interactive TUI (no `-p`/print mode) so the session stays
+        // alive and can be supervised. The prompt is passed positionally to seed
+        // the first turn.
         let mut cmd = format!("cd {} && claude", config.workspace.display());
 
         let model = config.model.as_deref().or(self.default_model());
@@ -27,7 +30,7 @@ impl Adapter for ClaudeAdapter {
 
         if let Some(prompt) = &config.prompt {
             let escaped = prompt.replace('\'', "'\\''");
-            cmd.push_str(&format!(" -p '{escaped}'"));
+            cmd.push_str(&format!(" '{escaped}'"));
         }
 
         for arg in &config.extra_args {
@@ -39,18 +42,20 @@ impl Adapter for ClaudeAdapter {
 
     fn parse_output(&self, output: &str) -> ParsedOutput {
         let mut result = ParsedOutput::default();
+        let last = last_non_empty_line(output);
 
-        // Detect status from output patterns
-        if output.contains("Task completed") || output.contains("Done!") {
-            result.status = Some(AgentStatus::Completed);
-        } else if output.contains("waiting for input")
-            || output.contains("? ")
-            || output.contains("Do you want")
-        {
+        // A waiting prompt is the current, actionable state, so it takes
+        // priority and is judged from the *last* line (not stale scrollback).
+        if looks_like_prompt(last) || last.contains("Do you want") {
             result.status = Some(AgentStatus::WaitingForInput);
-        } else if output.contains("Error:") || output.contains("error:") {
+        } else if output.contains("Task completed") || output.contains("Done!") {
+            result.status = Some(AgentStatus::Completed);
+        } else if last.contains("Error:") || last.contains("error:") {
             result.status = Some(AgentStatus::Error);
-        } else if output.contains("Working") || output.contains("Thinking") || output.contains("Reading") {
+        } else if output.contains("Working")
+            || output.contains("Thinking")
+            || output.contains("Reading")
+        {
             result.status = Some(AgentStatus::Running);
         }
 
@@ -96,7 +101,7 @@ mod tests {
         let cmd = adapter.build_command(&config(Some("fix the auth bug")));
         assert_eq!(
             cmd,
-            "cd /home/user/project && claude --model sonnet -p 'fix the auth bug'"
+            "cd /home/user/project && claude --model sonnet 'fix the auth bug'"
         );
     }
 
@@ -166,6 +171,15 @@ mod tests {
         let output = "Thinking about the problem...";
         let parsed = adapter.parse_output(output);
         assert_eq!(parsed.status, Some(AgentStatus::Running));
+    }
+
+    #[test]
+    fn waiting_prompt_on_last_line_wins_over_earlier_working_text() {
+        let adapter = ClaudeAdapter;
+        // Earlier scrollback says "Working", but the current line is a prompt.
+        let output = "Working on the task...\nEdited 3 files\nApply these changes? (y/n)";
+        let parsed = adapter.parse_output(output);
+        assert_eq!(parsed.status, Some(AgentStatus::WaitingForInput));
     }
 
     #[test]

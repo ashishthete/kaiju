@@ -26,8 +26,10 @@ Adapters implement a single trait, so adding a new CLI means writing one
    sends the built command.
 3. A background monitor polls each running session every 2 seconds, parses the
    pane output through the adapter, and updates status, runtime, token, and cost
-   metrics in the store.
-4. Clients read status/logs or attach directly to the tmux session.
+   metrics in the store. When an agent transitions to waiting-for-input (or
+   errors), the daemon alerts the operator once with a console bell.
+4. Clients read status/logs, reply with `send`, or attach directly to the tmux
+   session.
 
 ## Running
 
@@ -37,13 +39,19 @@ Start the daemon (defaults to `127.0.0.1:7800`, override with `NEXUS_PORT`):
 cargo run -p nexus-daemon
 ```
 
+Agent state is persisted to `~/.agentnexus/state.json` (override with
+`NEXUS_STATE`). On restart the daemon reloads its agents and marks any whose
+tmux session has since ended as stopped.
+
 Use the CLI:
 
 ```bash
 cargo run -p nexus-cli -- start --agent-type claude --workspace . --prompt "fix the failing test"
+cargo run -p nexus-cli -- start --agent-type claude --workspace . --isolate --prompt "risky refactor"  # own git worktree
 cargo run -p nexus-cli -- list
 cargo run -p nexus-cli -- status <id>
 cargo run -p nexus-cli -- logs <id>
+cargo run -p nexus-cli -- send <id> "now also update the README"
 cargo run -p nexus-cli -- attach <id>
 cargo run -p nexus-cli -- stop <id>
 ```
@@ -61,6 +69,7 @@ cargo run -p nexus-cli -- stop <id>
 | DELETE | `/agents/:id`            | Stop (if running) and remove.        |
 | POST   | `/agents/:id/start`      | Start a created agent.               |
 | POST   | `/agents/:id/stop`       | Stop a running agent.                |
+| POST   | `/agents/:id/input`      | Send a follow-up message / approval. |
 | POST   | `/agents/:id/interrupt`  | Send Ctrl-C to the session.          |
 | GET    | `/agents/:id/status`     | Status and metrics.                  |
 | GET    | `/agents/:id/logs`       | Recent tmux pane output.             |
@@ -77,6 +86,11 @@ manually since they require a terminal.
 
 ## Status / limitations
 
-- Agent state is in-memory; restarting the daemon loses tracked agents (their
-  tmux sessions keep running and can be reconciled via the `nexus-` prefix).
-- Persistent storage and orphaned-session reconciliation are not yet implemented.
+- Status and metrics are inferred by parsing CLI terminal output, which is
+  heuristic and CLI-version dependent. The waiting-for-input signal is judged
+  from the current prompt line to stay reliable, but completion/cost detection
+  may need tuning per CLI.
+- Pass `--isolate` (or `"isolate": true`) to run an agent in its own git
+  worktree on a `nexus/<id>` branch under `~/.agentnexus/worktrees` (override
+  with `NEXUS_WORKTREES`), so parallel agents in one repo don't collide. The
+  worktree is removed when the agent is deleted. Requires a git workspace.

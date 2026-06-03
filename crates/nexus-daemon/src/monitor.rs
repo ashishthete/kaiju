@@ -13,6 +13,7 @@ use nexus_core::agent::{AgentMetrics, AgentStatus};
 use std::time::Duration;
 use tracing::debug;
 
+use crate::notify;
 use crate::server::AppState;
 use crate::tmux::TmuxManager;
 
@@ -73,6 +74,9 @@ pub fn poll_once(state: &AppState) {
         state.store.update_metrics(&agent.id, metrics);
 
         if let Some(status) = parsed.status {
+            if notify::should_alert(agent.status, status) {
+                notify::alert(&agent, status);
+            }
             state.store.update_status(&agent.id, status);
         }
     }

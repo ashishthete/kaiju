@@ -1,26 +1,74 @@
+use crate::persist;
 use chrono::{DateTime, Utc};
 use nexus_core::agent::{Agent, AgentMetrics, AgentStatus};
+use nexus_core::Result;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-/// In-memory store for agent state.
+/// Thread-safe store for agent state.
 ///
-/// Thread-safe via RwLock. Will be replaced with persistent storage later.
+/// State lives in memory behind an `RwLock`. When a `path` is set, every
+/// mutation is flushed to a JSON file so the daemon can recover its fleet
+/// after a restart. With no `path` (e.g. in tests) the store is purely
+/// in-memory.
 #[derive(Clone)]
 pub struct AgentStore {
     agents: Arc<RwLock<HashMap<String, Agent>>>,
+    path: Option<Arc<PathBuf>>,
+}
+
+impl Default for AgentStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AgentStore {
+    /// In-memory store with no persistence.
     pub fn new() -> Self {
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
+            path: None,
+        }
+    }
+
+    /// Load any persisted agents from `path` (empty if the file is absent) and
+    /// return a store that flushes future mutations back to that file.
+    pub fn load_or_new(path: PathBuf) -> Result<Self> {
+        let loaded = persist::load(&path)?;
+        let map = loaded
+            .into_iter()
+            .map(|agent| (agent.id.clone(), agent))
+            .collect();
+        Ok(Self {
+            agents: Arc::new(RwLock::new(map)),
+            path: Some(Arc::new(path)),
+        })
+    }
+
+    /// Flush the current state to disk if a path is configured. Persistence
+    /// failures are logged, not propagated, so a disk hiccup never fails an
+    /// API call.
+    fn persist(&self) {
+        let Some(path) = &self.path else {
+            return;
+        };
+        let snapshot: Vec<Agent> = {
+            let agents = self.agents.read().unwrap();
+            agents.values().cloned().collect()
+        };
+        if let Err(e) = persist::save(path, &snapshot) {
+            tracing::warn!("failed to persist agent store to {}: {e}", path.display());
         }
     }
 
     pub fn insert(&self, agent: Agent) {
-        let mut agents = self.agents.write().unwrap();
-        agents.insert(agent.id.clone(), agent);
+        {
+            let mut agents = self.agents.write().unwrap();
+            agents.insert(agent.id.clone(), agent);
+        }
+        self.persist();
     }
 
     pub fn get(&self, id: &str) -> Option<Agent> {
@@ -43,39 +91,83 @@ impl AgentStore {
     }
 
     pub fn update_status(&self, id: &str, status: AgentStatus) -> bool {
-        let mut agents = self.agents.write().unwrap();
-        if let Some(agent) = agents.get_mut(id) {
-            agent.update_status(status);
-            true
-        } else {
-            false
+        let updated = {
+            let mut agents = self.agents.write().unwrap();
+            match agents.get_mut(id) {
+                Some(agent) => {
+                    agent.update_status(status);
+                    true
+                }
+                None => false,
+            }
+        };
+        if updated {
+            self.persist();
         }
+        updated
     }
 
     pub fn update_metrics(&self, id: &str, metrics: AgentMetrics) -> bool {
-        let mut agents = self.agents.write().unwrap();
-        if let Some(agent) = agents.get_mut(id) {
-            agent.update_metrics(metrics);
-            true
-        } else {
-            false
+        let updated = {
+            let mut agents = self.agents.write().unwrap();
+            match agents.get_mut(id) {
+                Some(agent) => {
+                    agent.update_metrics(metrics);
+                    true
+                }
+                None => false,
+            }
+        };
+        if updated {
+            self.persist();
         }
+        updated
     }
 
     /// Record the launch time and move the agent to Running.
     pub fn mark_started(&self, id: &str, now: DateTime<Utc>) -> bool {
-        let mut agents = self.agents.write().unwrap();
-        if let Some(agent) = agents.get_mut(id) {
-            agent.mark_started(now);
-            true
-        } else {
-            false
+        let updated = {
+            let mut agents = self.agents.write().unwrap();
+            match agents.get_mut(id) {
+                Some(agent) => {
+                    agent.mark_started(now);
+                    true
+                }
+                None => false,
+            }
+        };
+        if updated {
+            self.persist();
         }
+        updated
+    }
+
+    pub fn set_worktree_path(&self, id: &str, path: PathBuf) -> bool {
+        let updated = {
+            let mut agents = self.agents.write().unwrap();
+            match agents.get_mut(id) {
+                Some(agent) => {
+                    agent.set_worktree(path);
+                    true
+                }
+                None => false,
+            }
+        };
+        if updated {
+            self.persist();
+        }
+        updated
     }
 
     pub fn remove(&self, id: &str) -> Option<Agent> {
-        let mut agents = self.agents.write().unwrap();
-        agents.remove(id)
+        let removed = {
+            let mut agents = self.agents.write().unwrap();
+            agents.remove(id)
+        };
+        if removed.is_some() {
+            self.persist();
+        }
+        removed
     }
 }
 
@@ -195,5 +287,26 @@ mod tests {
         let stored = store.get(&id).unwrap();
         assert_eq!(stored.started_at, Some(now));
         assert_eq!(stored.status, AgentStatus::Running);
+    }
+
+    #[test]
+    fn mutations_persist_and_reload_from_disk() {
+        let mut path = std::env::temp_dir();
+        path.push(format!("nexus-store-test-{}.json", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        let id = {
+            let store = AgentStore::load_or_new(path.clone()).unwrap();
+            let agent = test_agent(AgentType::Codex);
+            let id = agent.id.clone();
+            store.insert(agent);
+            id
+        };
+
+        // A fresh store loading the same file sees the persisted agent.
+        let reloaded = AgentStore::load_or_new(path.clone()).unwrap();
+        assert_eq!(reloaded.get(&id).unwrap().agent_type, AgentType::Codex);
+
+        let _ = std::fs::remove_file(&path);
     }
 }

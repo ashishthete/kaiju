@@ -6,6 +6,10 @@
 
 pub mod api;
 pub mod monitor;
+pub mod notify;
+pub mod persist;
+pub mod reconcile;
 pub mod server;
 pub mod store;
 pub mod tmux;
+pub mod worktree;

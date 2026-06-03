@@ -8,6 +8,30 @@ pub struct ParsedOutput {
     pub estimated_cost_usd: Option<f64>,
 }
 
+/// Return the last non-empty, trimmed line of terminal output.
+///
+/// Adapters use this to inspect the *current* prompt line rather than the whole
+/// scrollback, which avoids matching stale text from earlier in the session.
+pub fn last_non_empty_line(output: &str) -> &str {
+    output
+        .lines()
+        .map(str::trim)
+        .rev()
+        .find(|line| !line.is_empty())
+        .unwrap_or("")
+}
+
+/// Heuristic: does this line look like an interactive prompt awaiting input?
+///
+/// Deliberately conservative to avoid false positives (which would falsely
+/// signal "agent needs you"). Adapters can layer CLI-specific markers on top.
+pub fn looks_like_prompt(line: &str) -> bool {
+    const YES_NO_MARKERS: [&str; 6] = ["(y/n)", "(Y/n)", "[y/N]", "[Y/n]", "(yes/no)", "[y/n]"];
+
+    let line = line.trim_end();
+    line.ends_with('?') || YES_NO_MARKERS.iter().any(|marker| line.contains(marker))
+}
+
 /// Trait that each CLI adapter must implement.
 ///
 /// Adapters know how to:
@@ -42,6 +66,32 @@ pub trait Adapter: Send + Sync {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn last_non_empty_line_skips_trailing_blanks() {
+        let output = "first line\nDo you want to continue?\n\n   \n";
+        assert_eq!(last_non_empty_line(output), "Do you want to continue?");
+    }
+
+    #[test]
+    fn last_non_empty_line_empty_input() {
+        assert_eq!(last_non_empty_line(""), "");
+        assert_eq!(last_non_empty_line("\n  \n"), "");
+    }
+
+    #[test]
+    fn looks_like_prompt_detects_question_and_yes_no() {
+        assert!(looks_like_prompt("Continue?"));
+        assert!(looks_like_prompt("Apply these changes? (y/n)"));
+        assert!(looks_like_prompt("Overwrite file [y/N]"));
+    }
+
+    #[test]
+    fn looks_like_prompt_rejects_normal_output() {
+        assert!(!looks_like_prompt("Reading src/main.rs"));
+        assert!(!looks_like_prompt("Total cost: $1.42"));
+        assert!(!looks_like_prompt(""));
+    }
 
     /// A mock adapter for testing the trait interface.
     struct MockAdapter;

@@ -20,6 +20,7 @@ pub fn routes() -> Router<AppState> {
         .route("/agents/:id/logs", get(get_logs))
         .route("/agents/:id/status", get(get_status))
         .route("/agents/:id/interrupt", post(interrupt_agent))
+        .route("/agents/:id/input", post(send_input))
         .route("/health", get(health))
 }
 
@@ -36,6 +37,15 @@ pub struct CreateAgentRequest {
     /// If true, start the agent immediately after creation.
     #[serde(default)]
     pub auto_start: bool,
+    /// If true, run the agent in its own git worktree (requires a git workspace).
+    #[serde(default)]
+    pub isolate: bool,
+}
+
+#[derive(Deserialize)]
+pub struct SendInputRequest {
+    /// Text to type into the agent's session, submitted with Enter.
+    pub text: String,
 }
 
 #[derive(Serialize)]
@@ -135,7 +145,8 @@ async fn create_agent(
         extra_args: req.extra_args,
     };
 
-    let agent = nexus_core::agent::Agent::new(config);
+    let mut agent = nexus_core::agent::Agent::new(config);
+    agent.isolate = req.isolate;
     let id = agent.id.clone();
     state.store.insert(agent);
 
@@ -190,6 +201,30 @@ async fn interrupt_agent(
     }
 }
 
+/// Send a line of input (a follow-up message or approval) to a running agent.
+async fn send_input(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<SendInputRequest>,
+) -> impl IntoResponse {
+    let agent = match state.store.get(&id) {
+        Some(a) => a,
+        None => return Err(err(StatusCode::NOT_FOUND, "agent not found")),
+    };
+
+    // Input only makes sense for a live session.
+    if agent.status.is_terminal() {
+        return Err(err(StatusCode::CONFLICT, "agent is not running"));
+    }
+
+    // Typing input is the same tmux operation as sending the launch command:
+    // the text followed by Enter. Reuse `send_keys` rather than duplicating it.
+    match crate::tmux::TmuxManager::send_keys(&agent.session_name, &req.text) {
+        Ok(()) => Ok(Json(serde_json::json!({ "status": "sent" }))),
+        Err(e) => Err(err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
+    }
+}
+
 async fn get_logs(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -227,10 +262,17 @@ async fn delete_agent(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    // Stop if running
+    // Stop if running, then clean up any isolated worktree.
     if let Some(agent) = state.store.get(&id) {
         if agent.status.is_active() {
             let _ = crate::server::stop_agent_internal(&state, &id);
+        }
+        if let Some(worktree) = &agent.worktree_path {
+            if let Err(e) =
+                crate::worktree::WorktreeManager::remove(&agent.workspace, worktree)
+            {
+                tracing::warn!("failed to clean up worktree for agent {id}: {e}");
+            }
         }
     }
 

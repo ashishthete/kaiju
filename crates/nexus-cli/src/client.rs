@@ -6,6 +6,8 @@ pub struct NexusClient {
     http: reqwest::Client,
 }
 
+// Only the fields the CLI actually renders are deserialized; any other keys
+// in the daemon's JSON response are ignored by serde.
 #[derive(Deserialize)]
 struct AgentResponse {
     id: String,
@@ -13,16 +15,12 @@ struct AgentResponse {
     model: Option<String>,
     status: String,
     session_name: String,
-    workspace: String,
-    prompt: Option<String>,
-    created_at: String,
     metrics: MetricsResponse,
 }
 
 #[derive(Deserialize)]
 struct MetricsResponse {
     runtime_secs: u64,
-    tokens_used: Option<u64>,
     estimated_cost_usd: Option<f64>,
 }
 
@@ -61,6 +59,7 @@ impl NexusClient {
         workspace: &str,
         model: Option<String>,
         prompt: Option<String>,
+        isolate: bool,
     ) -> Result<()> {
         let resp = self
             .http
@@ -71,6 +70,7 @@ impl NexusClient {
                 "model": model,
                 "prompt": prompt,
                 "auto_start": true,
+                "isolate": isolate,
             }))
             .send()
             .await?;
@@ -207,6 +207,24 @@ impl NexusClient {
 
         let agent: AgentResponse = resp.json().await?;
         println!("Agent {} stopped.", agent.id);
+
+        Ok(())
+    }
+
+    pub async fn send(&self, id: &str, message: &str) -> Result<()> {
+        let resp = self
+            .http
+            .post(format!("{}/agents/{id}/input", self.base_url))
+            .json(&serde_json::json!({ "text": message }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await?;
+            return Err(err.error.into());
+        }
+
+        println!("Sent to agent {id}.");
 
         Ok(())
     }

@@ -64,6 +64,23 @@ async fn create_agent_without_autostart_returns_created() {
 }
 
 #[tokio::test]
+async fn create_with_isolate_flag_is_accepted() {
+    // Without auto_start no git work happens; the flag is just recorded.
+    let req = json_request(
+        "POST",
+        "/agents",
+        serde_json::json!({
+            "agent_type": "claude",
+            "workspace": "/tmp/project",
+            "auto_start": false,
+            "isolate": true
+        }),
+    );
+    let resp = build_app(AppState::new()).oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
 async fn unsupported_agent_type_is_rejected() {
     let state = AppState::new();
     let req = json_request(
@@ -126,6 +143,53 @@ async fn get_missing_agent_returns_404() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn send_input_to_missing_agent_returns_404() {
+    let req = json_request(
+        "POST",
+        "/agents/nope/input",
+        serde_json::json!({ "text": "hello" }),
+    );
+    let resp = build_app(AppState::new()).oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn send_input_to_stopped_agent_returns_409() {
+    let state = AppState::new();
+
+    // Create an agent.
+    let create = json_request(
+        "POST",
+        "/agents",
+        serde_json::json!({
+            "agent_type": "claude",
+            "workspace": "/tmp",
+            "auto_start": false
+        }),
+    );
+    let resp = build_app(state.clone()).oneshot(create).await.unwrap();
+    let id = body_json(resp).await["id"].as_str().unwrap().to_string();
+
+    // Stop it. With no tmux session present, stop just marks it Stopped.
+    let stop = Request::builder()
+        .method("POST")
+        .uri(format!("/agents/{id}/stop"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = build_app(state.clone()).oneshot(stop).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Sending input to a terminal agent is a conflict.
+    let input = json_request(
+        "POST",
+        &format!("/agents/{id}/input"),
+        serde_json::json!({ "text": "hello" }),
+    );
+    let resp = build_app(state).oneshot(input).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
 }
 
 #[tokio::test]

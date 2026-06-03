@@ -1,4 +1,4 @@
-use nexus_core::adapter::{Adapter, ParsedOutput};
+use nexus_core::adapter::{last_non_empty_line, looks_like_prompt, Adapter, ParsedOutput};
 use nexus_core::agent::{AgentConfig, AgentStatus, AgentType};
 use regex::Regex;
 
@@ -36,14 +36,19 @@ impl Adapter for CodexAdapter {
 
     fn parse_output(&self, output: &str) -> ParsedOutput {
         let mut result = ParsedOutput::default();
+        let last = last_non_empty_line(output);
 
-        if output.contains("completed") || output.contains("Finished") {
-            result.status = Some(AgentStatus::Completed);
-        } else if output.contains("approve") || output.contains("confirm") || output.contains("(y/n)") {
+        // Waiting on the user (approval/prompt) is the actionable current state.
+        if looks_like_prompt(last) || last.contains("approve") || last.contains("confirm") {
             result.status = Some(AgentStatus::WaitingForInput);
+        } else if output.contains("completed") || output.contains("Finished") {
+            result.status = Some(AgentStatus::Completed);
         } else if output.contains("error") || output.contains("failed") {
             result.status = Some(AgentStatus::Error);
-        } else if output.contains("running") || output.contains("processing") || output.contains("generating") {
+        } else if output.contains("running")
+            || output.contains("processing")
+            || output.contains("generating")
+        {
             result.status = Some(AgentStatus::Running);
         }
 

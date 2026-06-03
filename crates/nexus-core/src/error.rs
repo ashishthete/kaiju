@@ -8,6 +8,9 @@ pub enum NexusError {
     #[error("tmux error: {0}")]
     Tmux(String),
 
+    #[error("git error: {0}")]
+    Git(String),
+
     #[error("adapter error: {0}")]
     Adapter(String),
 
