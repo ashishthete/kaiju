@@ -50,11 +50,20 @@ pub enum AgentStatus {
 
 impl AgentStatus {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, AgentStatus::Completed | AgentStatus::Stopped | AgentStatus::Error)
+        matches!(
+            self,
+            AgentStatus::Completed | AgentStatus::Stopped | AgentStatus::Error
+        )
     }
 
     pub fn is_active(&self) -> bool {
-        matches!(self, AgentStatus::Starting | AgentStatus::Running | AgentStatus::WaitingForInput)
+        matches!(
+            self,
+            AgentStatus::Starting
+                | AgentStatus::Running
+                | AgentStatus::WaitingForInput
+                | AgentStatus::Stuck
+        )
     }
 }
 
@@ -136,6 +145,12 @@ impl Agent {
         self.updated_at = Utc::now();
     }
 
+    /// The directory the agent actually runs in: its worktree when isolated,
+    /// otherwise the workspace.
+    pub fn run_dir(&self) -> &std::path::Path {
+        self.worktree_path.as_deref().unwrap_or(&self.workspace)
+    }
+
     pub fn update_status(&mut self, status: AgentStatus) {
         self.status = status;
         self.updated_at = Utc::now();
@@ -183,6 +198,8 @@ mod tests {
         assert!(AgentStatus::Starting.is_active());
         assert!(AgentStatus::Running.is_active());
         assert!(AgentStatus::WaitingForInput.is_active());
+        assert!(AgentStatus::Stuck.is_active());
+        assert!(!AgentStatus::Stuck.is_terminal());
         assert!(!AgentStatus::Completed.is_active());
     }
 
@@ -214,6 +231,21 @@ mod tests {
         });
 
         assert_eq!(agent.extra_args, vec!["--verbose", "--dangerously"]);
+    }
+
+    #[test]
+    fn run_dir_is_workspace_until_worktree_set() {
+        let mut agent = Agent::new(AgentConfig {
+            agent_type: AgentType::Claude,
+            model: None,
+            workspace: PathBuf::from("/tmp/project"),
+            prompt: None,
+            extra_args: vec![],
+        });
+        assert_eq!(agent.run_dir(), std::path::Path::new("/tmp/project"));
+
+        agent.set_worktree(PathBuf::from("/tmp/wt/abc"));
+        assert_eq!(agent.run_dir(), std::path::Path::new("/tmp/wt/abc"));
     }
 
     #[test]

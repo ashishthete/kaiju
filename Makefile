@@ -36,9 +36,11 @@ cli: ## Run the CLI; pass args via ARGS, e.g. make cli ARGS="list"
 install: ## Install the agentnexus CLI onto your PATH
 	cargo install --path crates/nexus-cli
 
-smoke: ## Hit the running daemon's API (no tmux required)
-	@curl -fsS $(NEXUS_URL)/health && echo
-	@curl -fsS $(NEXUS_URL)/agents && echo
+smoke: ## API contract smoke test (boots a throwaway daemon, no agent CLIs)
+	./scripts/smoke.sh
+
+e2e: ## Full pipeline test with a fake agent (needs tmux + git)
+	./scripts/e2e.sh
 
 clean: ## Remove build artifacts
 	cargo clean

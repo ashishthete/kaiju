@@ -33,7 +33,9 @@ impl AdapterRegistry {
 
     /// Look up an adapter by agent type.
     pub fn get(&self, agent_type: &AgentType) -> Option<&dyn Adapter> {
-        self.adapters.get(&agent_type.to_string()).map(|a| a.as_ref())
+        self.adapters
+            .get(&agent_type.to_string())
+            .map(|a| a.as_ref())
     }
 
     /// List all registered agent types.
@@ -57,7 +59,9 @@ mod tests {
     #[test]
     fn unknown_type_returns_none() {
         let registry = AdapterRegistry::with_defaults();
-        assert!(registry.get(&AgentType::Custom("aider".to_string())).is_none());
+        assert!(registry
+            .get(&AgentType::Custom("aider".to_string()))
+            .is_none());
     }
 
     #[test]

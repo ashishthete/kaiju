@@ -1,4 +1,6 @@
-use nexus_core::adapter::{last_non_empty_line, looks_like_prompt, Adapter, ParsedOutput};
+use nexus_core::adapter::{
+    controlling_prompt_line, ends_with_selection_menu, looks_like_prompt, Adapter, ParsedOutput,
+};
 use nexus_core::agent::{AgentConfig, AgentStatus, AgentType};
 use regex::Regex;
 
@@ -15,7 +17,8 @@ impl Adapter for CodexAdapter {
     }
 
     fn build_command(&self, config: &AgentConfig) -> String {
-        let mut cmd = format!("cd {} && codex", config.workspace.display());
+        let bin = crate::binary::agent_binary("NEXUS_CODEX_BIN", "codex");
+        let mut cmd = format!("cd {} && {bin}", config.workspace.display());
 
         let model = config.model.as_deref().or(self.default_model());
         if let Some(model) = model {
@@ -36,10 +39,14 @@ impl Adapter for CodexAdapter {
 
     fn parse_output(&self, output: &str) -> ParsedOutput {
         let mut result = ParsedOutput::default();
-        let last = last_non_empty_line(output);
+        let prompt = controlling_prompt_line(output);
 
         // Waiting on the user (approval/prompt) is the actionable current state.
-        if looks_like_prompt(last) || last.contains("approve") || last.contains("confirm") {
+        if ends_with_selection_menu(output)
+            || looks_like_prompt(prompt)
+            || prompt.contains("approve")
+            || prompt.contains("confirm")
+        {
             result.status = Some(AgentStatus::WaitingForInput);
         } else if output.contains("completed") || output.contains("Finished") {
             result.status = Some(AgentStatus::Completed);
@@ -84,7 +91,10 @@ mod tests {
     fn build_command_with_prompt() {
         let adapter = CodexAdapter;
         let cmd = adapter.build_command(&make_config());
-        assert_eq!(cmd, "cd /home/user/repo && codex --model o3 'add unit tests'");
+        assert_eq!(
+            cmd,
+            "cd /home/user/repo && codex --model o3 'add unit tests'"
+        );
     }
 
     #[test]

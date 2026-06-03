@@ -1,4 +1,7 @@
-use nexus_core::adapter::{last_non_empty_line, looks_like_prompt, Adapter, ParsedOutput};
+use nexus_core::adapter::{
+    controlling_prompt_line, ends_with_selection_menu, last_non_empty_line, looks_like_prompt,
+    Adapter, ParsedOutput,
+};
 use nexus_core::agent::{AgentConfig, AgentStatus, AgentType};
 use regex::Regex;
 
@@ -21,7 +24,8 @@ impl Adapter for ClaudeAdapter {
         // Launch the interactive TUI (no `-p`/print mode) so the session stays
         // alive and can be supervised. The prompt is passed positionally to seed
         // the first turn.
-        let mut cmd = format!("cd {} && claude", config.workspace.display());
+        let bin = crate::binary::agent_binary("NEXUS_CLAUDE_BIN", "claude");
+        let mut cmd = format!("cd {} && {bin}", config.workspace.display());
 
         let model = config.model.as_deref().or(self.default_model());
         if let Some(model) = model {
@@ -43,10 +47,15 @@ impl Adapter for ClaudeAdapter {
     fn parse_output(&self, output: &str) -> ParsedOutput {
         let mut result = ParsedOutput::default();
         let last = last_non_empty_line(output);
+        let prompt = controlling_prompt_line(output);
 
         // A waiting prompt is the current, actionable state, so it takes
-        // priority and is judged from the *last* line (not stale scrollback).
-        if looks_like_prompt(last) || last.contains("Do you want") {
+        // priority. A trailing selection menu (question may sit well above it) or
+        // a controlling prompt line both count; stale scrollback does not.
+        if ends_with_selection_menu(output)
+            || looks_like_prompt(prompt)
+            || prompt.contains("Do you want")
+        {
             result.status = Some(AgentStatus::WaitingForInput);
         } else if output.contains("Task completed") || output.contains("Done!") {
             result.status = Some(AgentStatus::Completed);
@@ -131,7 +140,10 @@ mod tests {
             prompt: None,
             extra_args: vec!["--verbose".to_string()],
         };
-        assert_eq!(adapter.build_command(&cfg), "cd /tmp && claude --model claude-opus-4-8 --verbose");
+        assert_eq!(
+            adapter.build_command(&cfg),
+            "cd /tmp && claude --model claude-opus-4-8 --verbose"
+        );
     }
 
     #[test]
@@ -178,6 +190,31 @@ mod tests {
         let adapter = ClaudeAdapter;
         // Earlier scrollback says "Working", but the current line is a prompt.
         let output = "Working on the task...\nEdited 3 files\nApply these changes? (y/n)";
+        let parsed = adapter.parse_output(output);
+        assert_eq!(parsed.status, Some(AgentStatus::WaitingForInput));
+    }
+
+    #[test]
+    fn waiting_detected_when_question_sits_above_a_menu() {
+        let adapter = ClaudeAdapter;
+        // The actionable question is above the selection menu options.
+        let output =
+            "● I'll edit main.rs\n\nDo you want to make this edit to main.rs?\n❯ 1. Yes\n  2. No";
+        let parsed = adapter.parse_output(output);
+        assert_eq!(parsed.status, Some(AgentStatus::WaitingForInput));
+    }
+
+    #[test]
+    fn waiting_detected_on_trust_folder_prompt() {
+        let adapter = ClaudeAdapter;
+        // Claude Code's real startup prompt: the question is several lines above
+        // the menu, with intervening text and a keyboard-hint footer below it.
+        let output = "Quick safety check: Is this a project you trust?\n\
+            Claude Code'll be able to read, edit, and execute files here.\n\
+            Security guide\n\
+            ❯ 1. Yes, I trust this folder\n\
+              2. No, exit\n\
+            Enter to confirm · Esc to cancel";
         let parsed = adapter.parse_output(output);
         assert_eq!(parsed.status, Some(AgentStatus::WaitingForInput));
     }

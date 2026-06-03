@@ -1,7 +1,8 @@
 //! Operator alerts for status changes that need a human.
 //!
-//! The decision logic ([`should_alert`]) is pure and tested; the delivery
-//! ([`alert`]) is a best-effort side effect kept separate from it.
+//! The decision logic ([`should_alert`]) and the message text ([`alert_message`])
+//! are pure and tested; delivery ([`alert`]) is a best-effort side effect — a
+//! console bell always, plus a Slack post when `NEXUS_SLACK_WEBHOOK` is set.
 
 use nexus_core::agent::{Agent, AgentStatus};
 use tracing::warn;
@@ -12,19 +13,55 @@ use tracing::warn;
 /// input, or an error. Returns false when the status is unchanged, so a steady
 /// `WaitingForInput` across many polls alerts exactly once.
 pub fn should_alert(previous: AgentStatus, next: AgentStatus) -> bool {
-    previous != next && matches!(next, AgentStatus::WaitingForInput | AgentStatus::Error)
+    previous != next
+        && matches!(
+            next,
+            AgentStatus::WaitingForInput | AgentStatus::Error | AgentStatus::Stuck
+        )
 }
 
-/// Best-effort operator alert: a prominent warning line plus a terminal bell
-/// in the daemon's console. Richer (OS-level) notifications can layer on later.
-pub fn alert(agent: &Agent, status: AgentStatus) {
+/// Pure: the human-readable alert line for an agent reaching `status`.
+pub fn alert_message(agent: &Agent, status: AgentStatus) -> String {
     let reason = match status {
         AgentStatus::WaitingForInput => "is waiting for your input",
         AgentStatus::Error => "hit an error",
+        AgentStatus::Stuck => "appears stuck (no output for a while)",
         _ => "needs attention",
     };
+    format!("agent {} ({}) {}", agent.id, agent.agent_type, reason)
+}
+
+/// Best-effort operator alert: a console bell + warning line always, and a
+/// Slack post when `NEXUS_SLACK_WEBHOOK` is configured.
+pub fn alert(agent: &Agent, status: AgentStatus) {
+    let message = alert_message(agent, status);
     // `\x07` rings the terminal bell wherever the daemon is running.
-    warn!("\x07agent {} ({}) {}", agent.id, agent.agent_type, reason);
+    warn!("\x07{message}");
+
+    if let Ok(url) = std::env::var("NEXUS_SLACK_WEBHOOK") {
+        if !url.is_empty() {
+            post_to_slack(url, message);
+        }
+    }
+}
+
+/// Fire-and-forget POST to a Slack incoming webhook. Spawned onto the current
+/// runtime; failures are ignored (alerts must never block or crash the monitor).
+fn post_to_slack(url: String, text: String) {
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+    handle.spawn(async move {
+        let client = reqwest::Client::new();
+        if let Err(e) = client
+            .post(&url)
+            .json(&serde_json::json!({ "text": text }))
+            .send()
+            .await
+        {
+            warn!("slack notification failed: {e}");
+        }
+    });
 }
 
 #[cfg(test)]
@@ -33,7 +70,10 @@ mod tests {
 
     #[test]
     fn alerts_on_transition_into_waiting() {
-        assert!(should_alert(AgentStatus::Running, AgentStatus::WaitingForInput));
+        assert!(should_alert(
+            AgentStatus::Running,
+            AgentStatus::WaitingForInput
+        ));
     }
 
     #[test]
@@ -61,5 +101,34 @@ mod tests {
     #[test]
     fn no_alert_on_completion() {
         assert!(!should_alert(AgentStatus::Running, AgentStatus::Completed));
+    }
+
+    #[test]
+    fn alerts_on_transition_into_stuck() {
+        assert!(should_alert(AgentStatus::Running, AgentStatus::Stuck));
+    }
+
+    #[test]
+    fn no_alert_when_already_stuck() {
+        assert!(!should_alert(AgentStatus::Stuck, AgentStatus::Stuck));
+    }
+
+    #[test]
+    fn alert_message_names_agent_and_reason() {
+        use nexus_core::agent::{AgentConfig, AgentType};
+        let agent = Agent::new(AgentConfig {
+            agent_type: AgentType::Claude,
+            model: None,
+            workspace: std::path::PathBuf::from("/tmp"),
+            prompt: None,
+            extra_args: vec![],
+        });
+
+        let waiting = alert_message(&agent, AgentStatus::WaitingForInput);
+        assert!(waiting.contains(&agent.id));
+        assert!(waiting.contains("waiting for your input"));
+
+        assert!(alert_message(&agent, AgentStatus::Stuck).contains("stuck"));
+        assert!(alert_message(&agent, AgentStatus::Error).contains("error"));
     }
 }

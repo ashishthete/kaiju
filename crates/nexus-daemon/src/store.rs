@@ -36,7 +36,7 @@ impl AgentStore {
     /// Load any persisted agents from `path` (empty if the file is absent) and
     /// return a store that flushes future mutations back to that file.
     pub fn load_or_new(path: PathBuf) -> Result<Self> {
-        let loaded = persist::load(&path)?;
+        let loaded: Vec<Agent> = persist::load(&path)?;
         let map = loaded
             .into_iter()
             .map(|agent| (agent.id.clone(), agent))

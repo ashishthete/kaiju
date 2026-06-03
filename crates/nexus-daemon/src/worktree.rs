@@ -37,7 +37,12 @@ impl WorktreeManager {
     /// Is `path` inside a git working tree?
     pub fn is_git_repo(path: &Path) -> bool {
         Command::new("git")
-            .args(["-C", &path.display().to_string(), "rev-parse", "--is-inside-work-tree"])
+            .args([
+                "-C",
+                &path.display().to_string(),
+                "rev-parse",
+                "--is-inside-work-tree",
+            ])
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
@@ -73,6 +78,27 @@ impl WorktreeManager {
         }
 
         Ok(())
+    }
+
+    /// Show the working-tree changes in `dir` (the agent's run directory).
+    ///
+    /// Captures what the agent has changed so far. Works on any git directory —
+    /// an isolated worktree or the plain workspace.
+    pub fn diff(dir: &Path) -> Result<String> {
+        let output = Command::new("git")
+            .args(["-C", &dir.display().to_string(), "--no-pager", "diff"])
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(NexusError::Git(format!(
+                "failed to diff '{}': {}",
+                dir.display(),
+                stderr.trim()
+            )));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
     /// Remove a worktree. `--force` so a dirty checkout is still cleaned up.

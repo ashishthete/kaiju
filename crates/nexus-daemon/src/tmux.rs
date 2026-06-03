@@ -5,10 +5,25 @@ use std::process::Command;
 pub struct TmuxManager;
 
 impl TmuxManager {
-    /// Create a new detached tmux session.
-    pub fn create_session(session_name: &str, working_dir: &str) -> Result<()> {
+    /// Create a detached tmux session that runs `command` (via `sh -c`) as its
+    /// main process.
+    ///
+    /// Because the agent is the session's process, the session ends when the
+    /// agent exits — a clean "completed" signal. Input can still be delivered
+    /// with `send_keys` while it runs, and `capture_pane` reads its output.
+    pub fn create_session(session_name: &str, working_dir: &str, command: &str) -> Result<()> {
         let output = Command::new("tmux")
-            .args(["new-session", "-d", "-s", session_name, "-c", working_dir])
+            .args([
+                "new-session",
+                "-d",
+                "-s",
+                session_name,
+                "-c",
+                working_dir,
+                "sh",
+                "-c",
+                command,
+            ])
             .output()?;
 
         if !output.status.success() {
@@ -47,7 +62,7 @@ impl TmuxManager {
                 "capture-pane",
                 "-t",
                 session_name,
-                "-p",          // print to stdout
+                "-p", // print to stdout
                 "-S",
                 &start.to_string(),
             ])

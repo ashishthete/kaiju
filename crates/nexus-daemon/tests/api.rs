@@ -21,10 +21,7 @@ fn json_request(method: &str, uri: &str, body: Value) -> Request<Body> {
 }
 
 fn get_request(uri: &str) -> Request<Body> {
-    Request::builder()
-        .uri(uri)
-        .body(Body::empty())
-        .unwrap()
+    Request::builder().uri(uri).body(Body::empty()).unwrap()
 }
 
 async fn body_json(response: axum::response::Response) -> Value {
@@ -40,6 +37,147 @@ async fn health_returns_ok() {
 
     let json = body_json(resp).await;
     assert_eq!(json["status"], "ok");
+}
+
+// -- Auth --
+
+fn authed_state() -> AppState {
+    let mut state = AppState::new();
+    state.auth_token = Some("secret".to_string());
+    state
+}
+
+#[tokio::test]
+async fn protected_route_rejects_missing_token() {
+    let resp = build_app(authed_state())
+        .oneshot(get_request("/agents"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn protected_route_accepts_valid_token() {
+    let req = Request::builder()
+        .uri("/agents")
+        .header("authorization", "Bearer secret")
+        .body(Body::empty())
+        .unwrap();
+    let resp = build_app(authed_state()).oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn health_and_dashboard_are_public_under_auth() {
+    let h = build_app(authed_state())
+        .oneshot(get_request("/health"))
+        .await
+        .unwrap();
+    assert_eq!(h.status(), StatusCode::OK);
+
+    let root = build_app(authed_state())
+        .oneshot(get_request("/"))
+        .await
+        .unwrap();
+    assert_eq!(root.status(), StatusCode::OK);
+}
+
+// -- Task queue (scheduler loop is not running here, so tasks stay queued) --
+
+#[tokio::test]
+async fn create_task_returns_created_and_queued() {
+    let req = json_request(
+        "POST",
+        "/tasks",
+        serde_json::json!({
+            "agent_type": "claude",
+            "workspace": "/tmp",
+            "prompt": "do it"
+        }),
+    );
+    let resp = build_app(AppState::new()).oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "queued");
+    assert_eq!(json["agent_type"], "claude");
+}
+
+#[tokio::test]
+async fn create_task_unsupported_type_is_rejected() {
+    let req = json_request(
+        "POST",
+        "/tasks",
+        serde_json::json!({ "agent_type": "aider", "workspace": "/tmp" }),
+    );
+    let resp = build_app(AppState::new()).oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn task_lifecycle_create_list_get_cancel() {
+    let state = AppState::new();
+
+    let create = json_request(
+        "POST",
+        "/tasks",
+        serde_json::json!({ "agent_type": "codex", "workspace": "/tmp", "prompt": "x" }),
+    );
+    let resp = build_app(state.clone()).oneshot(create).await.unwrap();
+    let id = body_json(resp).await["id"].as_str().unwrap().to_string();
+
+    // List shows the one task.
+    let resp = build_app(state.clone())
+        .oneshot(get_request("/tasks"))
+        .await
+        .unwrap();
+    assert_eq!(body_json(resp).await.as_array().unwrap().len(), 1);
+
+    // Cancel it -> canceled.
+    let cancel = Request::builder()
+        .method("POST")
+        .uri(format!("/tasks/{id}/cancel"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = build_app(state.clone()).oneshot(cancel).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(body_json(resp).await["status"], "canceled");
+
+    // Get reflects the canceled status.
+    let resp = build_app(state)
+        .oneshot(get_request(&format!("/tasks/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(body_json(resp).await["status"], "canceled");
+}
+
+#[tokio::test]
+async fn get_missing_task_returns_404() {
+    let app = build_app(AppState::new());
+    let resp = app.oneshot(get_request("/tasks/nope")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn cancel_missing_task_returns_404() {
+    let req = Request::builder()
+        .method("POST")
+        .uri("/tasks/nope/cancel")
+        .body(Body::empty())
+        .unwrap();
+    let resp = build_app(AppState::new()).oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn dashboard_served_at_root() {
+    let app = build_app(AppState::new());
+    let resp = app.oneshot(get_request("/")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(bytes.to_vec()).unwrap();
+    assert!(html.contains("AgentNexus"));
+    assert!(html.contains("/agents"));
 }
 
 #[tokio::test]
@@ -133,6 +271,16 @@ async fn create_then_list_and_get() {
     assert_eq!(resp.status(), StatusCode::OK);
     let fetched = body_json(resp).await;
     assert_eq!(fetched["id"], id);
+}
+
+#[tokio::test]
+async fn diff_missing_agent_returns_404() {
+    let app = build_app(AppState::new());
+    let resp = app
+        .oneshot(get_request("/agents/does-not-exist/diff"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

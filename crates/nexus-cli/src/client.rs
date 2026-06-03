@@ -39,6 +39,21 @@ struct LogsResponse {
 }
 
 #[derive(Deserialize)]
+struct DiffResponse {
+    diff: String,
+}
+
+#[derive(Deserialize)]
+struct TaskResp {
+    id: String,
+    status: String,
+    agent_type: String,
+    prompt: Option<String>,
+    agent_id: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct ErrorResponse {
     error: String,
 }
@@ -46,10 +61,25 @@ struct ErrorResponse {
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 impl NexusClient {
-    pub fn new(base_url: &str) -> Self {
+    /// Build a client. When `token` is set, it is sent as a bearer header on
+    /// every request, so authenticated daemons accept the calls.
+    pub fn new(base_url: &str, token: Option<String>) -> Self {
+        let http = match token.as_deref().filter(|t| !t.is_empty()) {
+            Some(t) => {
+                let mut headers = reqwest::header::HeaderMap::new();
+                if let Ok(value) = reqwest::header::HeaderValue::from_str(&format!("Bearer {t}")) {
+                    headers.insert(reqwest::header::AUTHORIZATION, value);
+                }
+                reqwest::Client::builder()
+                    .default_headers(headers)
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new())
+            }
+            None => reqwest::Client::new(),
+        };
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
-            http: reqwest::Client::new(),
+            http,
         }
     }
 
@@ -107,7 +137,7 @@ impl NexusClient {
                 .filter(|a| {
                     matches!(
                         a.status.as_str(),
-                        "starting" | "running" | "waitingforinput"
+                        "starting" | "running" | "waitingforinput" | "stuck"
                     )
                 })
                 .collect()
@@ -127,11 +157,7 @@ impl NexusClient {
         println!("{}", "-".repeat(72));
 
         for a in filtered {
-            let short_id = if a.id.len() > 10 {
-                &a.id[..10]
-            } else {
-                &a.id
-            };
+            let short_id = if a.id.len() > 10 { &a.id[..10] } else { &a.id };
             let model = a.model.as_deref().unwrap_or("-");
             let cost = a
                 .metrics
@@ -189,6 +215,28 @@ impl NexusClient {
 
         let logs: LogsResponse = resp.json().await?;
         print!("{}", logs.logs);
+
+        Ok(())
+    }
+
+    pub async fn diff(&self, id: &str) -> Result<()> {
+        let resp = self
+            .http
+            .get(format!("{}/agents/{id}/diff", self.base_url))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await?;
+            return Err(err.error.into());
+        }
+
+        let diff: DiffResponse = resp.json().await?;
+        if diff.diff.trim().is_empty() {
+            println!("No changes.");
+        } else {
+            print!("{}", diff.diff);
+        }
 
         Ok(())
     }
@@ -287,6 +335,89 @@ impl NexusClient {
             return Err(format!("tmux attach failed for session {}", agent.session_name).into());
         }
 
+        Ok(())
+    }
+
+    pub async fn submit(
+        &self,
+        agent_type: &str,
+        workspace: &str,
+        model: Option<String>,
+        prompt: Option<String>,
+        isolate: bool,
+    ) -> Result<()> {
+        let resp = self
+            .http
+            .post(format!("{}/tasks", self.base_url))
+            .json(&serde_json::json!({
+                "agent_type": agent_type,
+                "workspace": workspace,
+                "model": model,
+                "prompt": prompt,
+                "isolate": isolate,
+            }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await?;
+            return Err(err.error.into());
+        }
+
+        let task: TaskResp = resp.json().await?;
+        println!("Task queued:");
+        println!("  ID:     {}", task.id);
+        println!("  Status: {}", task.status);
+        Ok(())
+    }
+
+    pub async fn queue(&self) -> Result<()> {
+        let resp = self
+            .http
+            .get(format!("{}/tasks", self.base_url))
+            .send()
+            .await?;
+
+        let tasks: Vec<TaskResp> = resp.json().await?;
+        if tasks.is_empty() {
+            println!("No tasks.");
+            return Ok(());
+        }
+
+        println!(
+            "{:<12} {:<10} {:<10} {:<40}",
+            "ID", "TYPE", "STATUS", "DETAIL"
+        );
+        println!("{}", "-".repeat(72));
+        for t in &tasks {
+            let id = if t.id.len() > 10 { &t.id[..10] } else { &t.id };
+            let detail = t
+                .error
+                .clone()
+                .or_else(|| t.agent_id.clone())
+                .or_else(|| t.prompt.clone())
+                .unwrap_or_else(|| "-".to_string());
+            println!(
+                "{:<12} {:<10} {:<10} {:<40}",
+                id, t.agent_type, t.status, detail
+            );
+        }
+        Ok(())
+    }
+
+    pub async fn cancel_task(&self, id: &str) -> Result<()> {
+        let resp = self
+            .http
+            .post(format!("{}/tasks/{id}/cancel", self.base_url))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await?;
+            return Err(err.error.into());
+        }
+
+        println!("Task {id} canceled.");
         Ok(())
     }
 }

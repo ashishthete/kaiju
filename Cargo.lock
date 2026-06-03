@@ -907,6 +907,7 @@ dependencies = [
  "http-body-util",
  "nexus-adapters",
  "nexus-core",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",

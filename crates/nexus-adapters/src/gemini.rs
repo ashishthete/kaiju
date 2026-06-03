@@ -1,4 +1,7 @@
-use nexus_core::adapter::{last_non_empty_line, looks_like_prompt, Adapter, ParsedOutput};
+use nexus_core::adapter::{
+    controlling_prompt_line, ends_with_selection_menu, last_non_empty_line, looks_like_prompt,
+    Adapter, ParsedOutput,
+};
 use nexus_core::agent::{AgentConfig, AgentStatus, AgentType};
 
 /// Adapter for Google Gemini CLI.
@@ -16,7 +19,8 @@ impl Adapter for GeminiAdapter {
     fn build_command(&self, config: &AgentConfig) -> String {
         // `-i` seeds the first prompt and stays interactive, unlike `-p` which
         // runs once and exits. Keeps the session alive for supervision.
-        let mut cmd = format!("cd {} && gemini", config.workspace.display());
+        let bin = crate::binary::agent_binary("NEXUS_GEMINI_BIN", "gemini");
+        let mut cmd = format!("cd {} && {bin}", config.workspace.display());
 
         let model = config.model.as_deref().or(self.default_model());
         if let Some(model) = model {
@@ -38,8 +42,9 @@ impl Adapter for GeminiAdapter {
     fn parse_output(&self, output: &str) -> ParsedOutput {
         let mut result = ParsedOutput::default();
         let last = last_non_empty_line(output);
+        let prompt = controlling_prompt_line(output);
 
-        if looks_like_prompt(last) {
+        if ends_with_selection_menu(output) || looks_like_prompt(prompt) {
             result.status = Some(AgentStatus::WaitingForInput);
         } else if output.contains("Done") || output.contains("completed") {
             result.status = Some(AgentStatus::Completed);
