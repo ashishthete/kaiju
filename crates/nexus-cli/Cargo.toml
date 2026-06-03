@@ -1,0 +1,16 @@
+[package]
+name = "nexus-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "agentnexus"
+path = "src/main.rs"
+
+[dependencies]
+nexus-core = { workspace = true }
+clap = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }

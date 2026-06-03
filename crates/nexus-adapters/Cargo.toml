@@ -1,0 +1,10 @@
+[package]
+name = "nexus-adapters"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+nexus-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+regex = "1"

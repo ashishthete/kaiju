@@ -1,0 +1,31 @@
+[workspace]
+members = [
+    "crates/nexus-core",
+    "crates/nexus-adapters",
+    "crates/nexus-daemon",
+    "crates/nexus-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Ashish Thete <thete.ashish1@gmail.com>"]
+
+[workspace.dependencies]
+nexus-core = { path = "crates/nexus-core" }
+nexus-adapters = { path = "crates/nexus-adapters" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
