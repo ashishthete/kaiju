@@ -24,6 +24,11 @@ pub fn routes() -> Router<AppState> {
         .route("/agents/:id/status", get(get_status))
         .route("/agents/:id/interrupt", post(interrupt_agent))
         .route("/agents/:id/input", post(send_input))
+        .route(
+            "/agents/:id/files",
+            post(crate::files::upload_file)
+                .layer(axum::extract::DefaultBodyLimit::max(25 * 1024 * 1024)),
+        )
         .route("/agents/:id/terminal/ws", get(crate::terminal::terminal_ws))
         .route(
             "/agents/:id/terminal/size",

@@ -338,6 +338,31 @@ async function refresh() {
   }
 }
 
+// Drag-and-drop a file onto the terminal: upload it into the agent's working
+// dir, then type the returned path into the live session.
+(function setupTerminalDrop() {
+  const el = document.getElementById("d-term");
+  if (!el) return;
+  el.addEventListener("dragover", (e) => { e.preventDefault(); el.style.outline = "2px dashed #3b82f6"; });
+  el.addEventListener("dragleave", () => { el.style.outline = ""; });
+  el.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    el.style.outline = "";
+    if (!selected || !ws || ws.readyState !== 1) return;
+    for (const file of e.dataTransfer.files) {
+      try {
+        const buf = await file.arrayBuffer();
+        const res = await api("/agents/" + selected + "/files?name=" + encodeURIComponent(file.name), {
+          method: "POST",
+          headers: { "content-type": "application/octet-stream" },
+          body: buf,
+        });
+        if (res.ok) { ws.send((await res.json()).path + " "); if (term) term.focus(); }
+      } catch (err) { /* ignore a failed upload */ }
+    }
+  });
+})();
+
 refresh();
 setInterval(refresh, 2000);
 </script>

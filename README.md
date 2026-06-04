@@ -65,6 +65,11 @@ kaiju remove <id>
 **Terminal** tab (type straight into the agent), plus per-row
 interrupt/stop/remove, a "New agent" form, and copy-ID buttons.
 
+**Drag a file (or image) onto the terminal** to upload it into the agent's
+working dir (`.kaiju-uploads/`); Kaiju then types the saved path into the
+session, so the agent can read it — handy for images, which can't be streamed
+through a terminal.
+
 ## CLI
 
 ```bash
@@ -136,6 +141,7 @@ marking any agent whose tmux session has since ended as stopped.
 | POST | `/agents/:id/stop` | Stop a running agent. |
 | POST | `/agents/:id/input` | Send a follow-up message / approval. |
 | POST | `/agents/:id/interrupt` | Send Ctrl-C to the session. |
+| POST | `/agents/:id/files?name=` | Upload a file into the agent's working dir (raw body; drag-drop). |
 | GET | `/agents/:id/status` | Status and metrics. |
 | GET | `/agents/:id/logs` | Recent tmux pane output. |
 | GET | `/agents/:id/diff` | Changes the agent has made (git diff). |
