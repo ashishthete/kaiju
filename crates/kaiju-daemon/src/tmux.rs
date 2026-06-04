@@ -115,7 +115,7 @@ impl TmuxManager {
     }
 
     /// List all active tmux sessions with the "kaiju-" prefix.
-    pub fn list_nexus_sessions() -> Result<Vec<String>> {
+    pub fn list_kaiju_sessions() -> Result<Vec<String>> {
         let output = Command::new("tmux")
             .args(["list-sessions", "-F", "#{session_name}"])
             .output()?;

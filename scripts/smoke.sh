@@ -51,7 +51,8 @@ done
 expect_status GET    /health                       200
 expect_status GET    /agents                       200
 expect_status POST   /agents                       201 '{"agent_type":"claude","workspace":"/tmp","auto_start":false}'
-expect_status POST   /agents                       400 '{"agent_type":"aider","workspace":"/tmp","auto_start":false}'
+expect_status POST   /agents                       201 '{"agent_type":"aider","workspace":"/tmp","auto_start":false}'
+expect_status POST   /agents                       400 '{"agent_type":"  ","workspace":"/tmp","auto_start":false}'
 expect_status GET    /agents/does-not-exist        404
 expect_status POST   /agents/does-not-exist/input  404 '{"text":"hi"}'
 expect_status DELETE /agents/does-not-exist        404

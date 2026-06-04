@@ -121,10 +121,29 @@ pub fn spawn_started_agent(
 /// On startup, mark agents that were recorded active but whose tmux session is
 /// gone (the daemon was down while they ended) as stopped.
 fn reconcile_startup(store: &AgentStore) {
-    let live = TmuxManager::list_nexus_sessions().unwrap_or_default();
+    let live = TmuxManager::list_kaiju_sessions().unwrap_or_default();
     for id in reconcile::orphaned_active_ids(&store.list(), &live) {
         store.update_status(&id, AgentStatus::Stopped);
         info!("reconciled orphaned agent {id} as stopped");
+    }
+}
+
+/// On startup, delete worktree directories under the managed base that no agent
+/// references — leftovers from a crash. Best-effort; bounded to the daemon's own
+/// worktrees directory.
+fn sweep_orphaned_worktrees(store: &AgentStore) {
+    let Ok(entries) = std::fs::read_dir(worktrees_base()) else {
+        return;
+    };
+    let existing: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    for dir in reconcile::orphaned_worktree_dirs(&existing, &store.list()) {
+        if std::fs::remove_dir_all(&dir).is_ok() {
+            info!("removed orphaned worktree {}", dir.display());
+        }
     }
 }
 
@@ -147,6 +166,7 @@ pub fn build_app(state: AppState) -> Router {
 pub async fn run(addr: SocketAddr) -> Result<()> {
     let store = AgentStore::load_or_new(state_file_path())?;
     reconcile_startup(&store);
+    sweep_orphaned_worktrees(&store);
     let tasks = TaskStore::load_or_new(tasks_file_path())?;
     let mut state = AppState::with_stores(store, tasks);
     state.auth_token = std::env::var("KAIJU_TOKEN").ok().filter(|t| !t.is_empty());

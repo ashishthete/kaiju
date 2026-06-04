@@ -89,6 +89,11 @@ kaiju remove <id>                                     # stop (if running) + clea
 
 Point the CLI at a non-default daemon with `--url` (or `KAIJU_URL`).
 
+Any `-t` value that isn't a built-in (`claude`/`codex`/`gemini`) is treated as a
+**custom CLI** — the value is the executable to run, e.g.
+`kaiju start -t aider -w . --prompt "..."`. Use `--extra-args` for flags the CLI
+needs.
+
 ### Task queue
 
 Enqueue a backlog and let a bounded pool work through it (size set by

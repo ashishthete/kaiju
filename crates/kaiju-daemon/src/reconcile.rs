@@ -6,6 +6,8 @@
 //! can mark them stopped.
 
 use kaiju_core::agent::Agent;
+use std::collections::HashSet;
+use std::path::PathBuf;
 
 /// Return the ids of agents that are recorded active but whose tmux session is
 /// no longer present in `live_sessions`.
@@ -15,6 +17,21 @@ pub fn orphaned_active_ids(agents: &[Agent], live_sessions: &[String]) -> Vec<St
         .filter(|agent| agent.status.is_active())
         .filter(|agent| !live_sessions.iter().any(|name| name == &agent.session_name))
         .map(|agent| agent.id.clone())
+        .collect()
+}
+
+/// Return worktree directories under the managed base that no current agent
+/// references — leftovers from a crash. Safe to delete, since every live agent
+/// records its worktree path.
+pub fn orphaned_worktree_dirs(existing: &[PathBuf], agents: &[Agent]) -> Vec<PathBuf> {
+    let referenced: HashSet<&PathBuf> = agents
+        .iter()
+        .filter_map(|agent| agent.worktree_path.as_ref())
+        .collect();
+    existing
+        .iter()
+        .filter(|dir| !referenced.contains(dir))
+        .cloned()
         .collect()
 }
 
@@ -56,5 +73,17 @@ mod tests {
         let agent = agent_with_status(AgentStatus::Completed);
         let orphans = orphaned_active_ids(std::slice::from_ref(&agent), &[]);
         assert!(orphans.is_empty());
+    }
+
+    #[test]
+    fn worktree_dirs_not_referenced_by_any_agent_are_orphaned() {
+        let mut agent = agent_with_status(AgentStatus::Running);
+        agent.worktree_path = Some(PathBuf::from("/base/aaaa"));
+        let existing = vec![
+            PathBuf::from("/base/aaaa"), // referenced -> kept
+            PathBuf::from("/base/bbbb"), // no agent -> orphaned
+        ];
+        let orphans = orphaned_worktree_dirs(&existing, std::slice::from_ref(&agent));
+        assert_eq!(orphans, vec![PathBuf::from("/base/bbbb")]);
     }
 }

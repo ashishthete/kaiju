@@ -4,13 +4,16 @@ use std::collections::HashMap;
 
 use crate::claude::ClaudeAdapter;
 use crate::codex::CodexAdapter;
+use crate::custom::CustomAdapter;
 use crate::gemini::GeminiAdapter;
 
 /// Registry of available CLI adapters.
 ///
-/// Maps agent types to their adapter implementations.
+/// Maps agent types to their adapter implementations. Any `AgentType::Custom`
+/// not explicitly registered falls back to the generic [`CustomAdapter`].
 pub struct AdapterRegistry {
     adapters: HashMap<String, Box<dyn Adapter>>,
+    custom: CustomAdapter,
 }
 
 impl AdapterRegistry {
@@ -18,6 +21,7 @@ impl AdapterRegistry {
     pub fn with_defaults() -> Self {
         let mut registry = Self {
             adapters: HashMap::new(),
+            custom: CustomAdapter,
         };
         registry.register(Box::new(ClaudeAdapter));
         registry.register(Box::new(CodexAdapter));
@@ -31,11 +35,16 @@ impl AdapterRegistry {
         self.adapters.insert(key, adapter);
     }
 
-    /// Look up an adapter by agent type.
+    /// Look up an adapter by agent type. Falls back to the generic
+    /// [`CustomAdapter`] for any unregistered `AgentType::Custom`.
     pub fn get(&self, agent_type: &AgentType) -> Option<&dyn Adapter> {
-        self.adapters
-            .get(&agent_type.to_string())
-            .map(|a| a.as_ref())
+        if let Some(adapter) = self.adapters.get(&agent_type.to_string()) {
+            return Some(adapter.as_ref());
+        }
+        match agent_type {
+            AgentType::Custom(_) => Some(&self.custom),
+            _ => None,
+        }
     }
 
     /// List all registered agent types.
@@ -57,11 +66,11 @@ mod tests {
     }
 
     #[test]
-    fn unknown_type_returns_none() {
+    fn custom_type_falls_back_to_generic_adapter() {
         let registry = AdapterRegistry::with_defaults();
-        assert!(registry
-            .get(&AgentType::Custom("aider".to_string()))
-            .is_none());
+        let adapter = registry.get(&AgentType::Custom("aider".to_string()));
+        assert!(adapter.is_some());
+        assert_eq!(adapter.unwrap().display_name(), "Custom CLI");
     }
 
     #[test]

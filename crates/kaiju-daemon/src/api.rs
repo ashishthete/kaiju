@@ -197,13 +197,11 @@ async fn create_task(
     State(state): State<AppState>,
     Json(req): Json<CreateTaskRequest>,
 ) -> impl IntoResponse {
-    let agent_type: AgentType = req.agent_type.parse().expect("infallible");
-    if state.adapters.get(&agent_type).is_none() {
-        return Err(err(
-            StatusCode::BAD_REQUEST,
-            &format!("unsupported agent type: {}", req.agent_type),
-        ));
+    if req.agent_type.trim().is_empty() {
+        return Err(err(StatusCode::BAD_REQUEST, "agent type must not be empty"));
     }
+    // Any non-builtin type is treated as a custom CLI (the type name is the binary).
+    let agent_type: AgentType = req.agent_type.parse().expect("infallible");
 
     let spec = TaskSpec {
         agent_type,
@@ -252,17 +250,12 @@ async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> impl IntoResponse {
-    // parse() is infallible for AgentType (unknown strings become Custom),
-    // but we still verify an adapter exists below.
-    let agent_type: AgentType = req.agent_type.parse().expect("infallible");
-
-    // Verify adapter exists
-    if state.adapters.get(&agent_type).is_none() {
-        return Err(err(
-            StatusCode::BAD_REQUEST,
-            &format!("unsupported agent type: {}", req.agent_type),
-        ));
+    if req.agent_type.trim().is_empty() {
+        return Err(err(StatusCode::BAD_REQUEST, "agent type must not be empty"));
     }
+    // parse() is infallible: builtins map to their adapter, any other non-blank
+    // string becomes a custom CLI (the type name is the executable).
+    let agent_type: AgentType = req.agent_type.parse().expect("infallible");
 
     let config = AgentConfig {
         agent_type,

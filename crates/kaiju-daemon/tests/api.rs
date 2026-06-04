@@ -103,11 +103,23 @@ async fn create_task_returns_created_and_queued() {
 }
 
 #[tokio::test]
-async fn create_task_unsupported_type_is_rejected() {
+async fn create_task_custom_type_is_accepted() {
+    // A non-builtin type ("aider") is a custom CLI and is enqueued, not rejected.
     let req = json_request(
         "POST",
         "/tasks",
         serde_json::json!({ "agent_type": "aider", "workspace": "/tmp" }),
+    );
+    let resp = build_app(AppState::new()).oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn create_task_blank_type_is_rejected() {
+    let req = json_request(
+        "POST",
+        "/tasks",
+        serde_json::json!({ "agent_type": "  ", "workspace": "/tmp" }),
     );
     let resp = build_app(AppState::new()).oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -219,13 +231,31 @@ async fn create_with_isolate_flag_is_accepted() {
 }
 
 #[tokio::test]
-async fn unsupported_agent_type_is_rejected() {
+async fn custom_agent_type_is_accepted() {
+    // A non-builtin type ("aider") is treated as a custom CLI and created.
     let state = AppState::new();
     let req = json_request(
         "POST",
         "/agents",
         serde_json::json!({
             "agent_type": "aider",
+            "workspace": "/tmp",
+            "auto_start": false
+        }),
+    );
+
+    let resp = build_app(state).oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn blank_agent_type_is_rejected() {
+    let state = AppState::new();
+    let req = json_request(
+        "POST",
+        "/agents",
+        serde_json::json!({
+            "agent_type": "  ",
             "workspace": "/tmp",
             "auto_start": false
         }),
