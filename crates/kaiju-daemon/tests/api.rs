@@ -7,7 +7,7 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use nexus_daemon::server::{build_app, AppState};
+use kaiju_daemon::server::{build_app, AppState};
 use serde_json::Value;
 use tower::ServiceExt; // for `oneshot`
 
@@ -353,7 +353,7 @@ async fn delete_missing_agent_returns_404() {
 
 #[tokio::test]
 async fn xterm_asset_is_served_publicly() {
-    let app = nexus_daemon::server::build_app(nexus_daemon::server::AppState::new());
+    let app = kaiju_daemon::server::build_app(kaiju_daemon::server::AppState::new());
     let res = app.oneshot(get_request("/assets/xterm.js")).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let ct = res.headers().get("content-type").unwrap().to_str().unwrap();

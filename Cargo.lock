@@ -830,6 +830,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaiju-adapters"
+version = "0.1.0"
+dependencies = [
+ "kaiju-core",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "kaiju-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "kaiju-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "kaiju-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "kaiju-daemon"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "http-body-util",
+ "kaiju-adapters",
+ "kaiju-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tower-http 0.5.2",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -927,59 +980,6 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "tempfile",
-]
-
-[[package]]
-name = "nexus-adapters"
-version = "0.1.0"
-dependencies = [
- "nexus-core",
- "regex",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nexus-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "nexus-core",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "nexus-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
- "thiserror",
- "uuid",
-]
-
-[[package]]
-name = "nexus-daemon"
-version = "0.1.0"
-dependencies = [
- "axum",
- "chrono",
- "http-body-util",
- "nexus-adapters",
- "nexus-core",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "tower-http 0.5.2",
- "tracing",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

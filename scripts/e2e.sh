@@ -8,7 +8,7 @@
 #   persistence across a daemon restart -> worktree cleanup on remove.
 #
 # Requires: tmux, git, and a built workspace. For speed, install the CLI first:
-#   cargo install --path crates/nexus-cli
+#   cargo install --path crates/kaiju-cli
 #
 # Usage:  ./scripts/e2e.sh           (run from the repo root)
 #
@@ -35,7 +35,7 @@ cli() {
   if command -v kaiju >/dev/null 2>&1; then
     kaiju --url "$URL" "$@"
   else
-    cargo run -q -p nexus-cli -- --url "$URL" "$@"
+    cargo run -q -p kaiju-cli -- --url "$URL" "$@"
   fi
 }
 
@@ -45,7 +45,7 @@ start_daemon() {
   # reorder PATH ahead of our temp dir, launching the real `claude` instead.
   KAIJU_PORT="$PORT" KAIJU_STATE="$STATE" KAIJU_WORKTREES="$WT" \
     KAIJU_CLAUDE_BIN="$BIN/claude" \
-    cargo run -q -p nexus-daemon >>"$LOG" 2>&1 &
+    cargo run -q -p kaiju-daemon >>"$LOG" 2>&1 &
   DAEMON_PID=$!
   for _ in $(seq 1 60); do
     curl -sf "$URL/health" >/dev/null 2>&1 && return 0 || sleep 1
@@ -106,7 +106,7 @@ wait_status waitingforinput 25
 echo "   OK"
 
 echo "3) git worktree was created"
-git -C "$WS" worktree list | grep -q "nexus/" && echo "   OK" || { echo "   MISSING"; exit 1; }
+git -C "$WS" worktree list | grep -q "kaiju/" && echo "   OK" || { echo "   MISSING"; exit 1; }
 
 echo "4) operator was alerted"
 grep -q "waiting for your input" "$LOG" && echo "   OK" || echo "   WARNING: alert not found in log"
@@ -123,7 +123,7 @@ cli list | grep -q "${ID:0:10}" && echo "   OK" || { echo "   state LOST"; exit 
 
 echo "7) remove cleans up the worktree"
 cli remove "$ID"
-if git -C "$WS" worktree list | grep -q "nexus/"; then
+if git -C "$WS" worktree list | grep -q "kaiju/"; then
   echo "   worktree NOT cleaned"; exit 1
 else
   echo "   OK"

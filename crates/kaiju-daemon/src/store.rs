@@ -1,7 +1,7 @@
 use crate::persist;
 use chrono::{DateTime, Utc};
-use nexus_core::agent::{Agent, AgentMetrics, AgentStatus};
-use nexus_core::Result;
+use kaiju_core::agent::{Agent, AgentMetrics, AgentStatus};
+use kaiju_core::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -174,7 +174,7 @@ impl AgentStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nexus_core::agent::{AgentConfig, AgentType};
+    use kaiju_core::agent::{AgentConfig, AgentType};
     use std::path::PathBuf;
 
     fn test_agent(agent_type: AgentType) -> Agent {

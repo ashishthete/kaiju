@@ -28,13 +28,13 @@ lint: ## Run clippy, treating warnings as errors
 check: fmt-check lint test ## Run the full pre-commit gate
 
 daemon: ## Run the daemon (KAIJU_PORT overrides the port)
-	cargo run -p nexus-daemon
+	cargo run -p kaiju-daemon
 
 cli: ## Run the CLI; pass args via ARGS, e.g. make cli ARGS="list"
-	cargo run -p nexus-cli -- $(ARGS)
+	cargo run -p kaiju-cli -- $(ARGS)
 
 install: ## Install the kaiju CLI onto your PATH
-	cargo install --path crates/nexus-cli
+	cargo install --path crates/kaiju-cli
 
 smoke: ## API contract smoke test (boots a throwaway daemon, no agent CLIs)
 	./scripts/smoke.sh

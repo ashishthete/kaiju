@@ -1,4 +1,4 @@
-use nexus_core::{NexusError, Result};
+use kaiju_core::{NexusError, Result};
 use std::process::Command;
 
 /// Encode bytes as tmux `send-keys -H` hex arguments (one per byte). Pure.

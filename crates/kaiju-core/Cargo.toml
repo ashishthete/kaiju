@@ -1,5 +1,5 @@
 [package]
-name = "nexus-core"
+name = "kaiju-core"
 version.workspace = true
 edition.workspace = true
 

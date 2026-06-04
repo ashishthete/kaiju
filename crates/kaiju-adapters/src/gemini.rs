@@ -1,8 +1,8 @@
-use nexus_core::adapter::{
+use kaiju_core::adapter::{
     controlling_prompt_line, ends_with_selection_menu, last_non_empty_line, looks_like_prompt,
     Adapter, ParsedOutput,
 };
-use nexus_core::agent::{AgentConfig, AgentStatus, AgentType};
+use kaiju_core::agent::{AgentConfig, AgentStatus, AgentType};
 
 /// Adapter for Google Gemini CLI.
 pub struct GeminiAdapter;

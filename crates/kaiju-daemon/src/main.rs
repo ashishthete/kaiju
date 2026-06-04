@@ -1,4 +1,4 @@
-use nexus_daemon::server;
+use kaiju_daemon::server;
 use std::net::SocketAddr;
 use tracing_subscriber::EnvFilter;
 
@@ -7,7 +7,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,nexus_daemon=debug")),
+                .unwrap_or_else(|_| EnvFilter::new("info,kaiju_daemon=debug")),
         )
         .init();
 

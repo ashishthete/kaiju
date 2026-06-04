@@ -4,7 +4,7 @@
 //! are pure and tested; delivery ([`alert`]) is a best-effort side effect — a
 //! console bell always, plus a Slack post when `KAIJU_SLACK_WEBHOOK` is set.
 
-use nexus_core::agent::{Agent, AgentStatus};
+use kaiju_core::agent::{Agent, AgentStatus};
 use tracing::warn;
 
 /// Should a status change pull the operator in?
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn alert_message_names_agent_and_reason() {
-        use nexus_core::agent::{AgentConfig, AgentType};
+        use kaiju_core::agent::{AgentConfig, AgentType};
         let agent = Agent::new(AgentConfig {
             agent_type: AgentType::Claude,
             model: None,

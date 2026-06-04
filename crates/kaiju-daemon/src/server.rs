@@ -1,7 +1,7 @@
 use axum::Router;
-use nexus_adapters::AdapterRegistry;
-use nexus_core::agent::AgentStatus;
-use nexus_core::{NexusError, Result};
+use kaiju_adapters::AdapterRegistry;
+use kaiju_core::agent::AgentStatus;
+use kaiju_core::{NexusError, Result};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -107,10 +107,10 @@ fn concurrency() -> usize {
 /// create-agent endpoint and the scheduler.
 pub fn spawn_started_agent(
     state: &AppState,
-    config: &nexus_core::agent::AgentConfig,
+    config: &kaiju_core::agent::AgentConfig,
     isolate: bool,
 ) -> Result<String> {
-    let mut agent = nexus_core::agent::Agent::new(config.clone());
+    let mut agent = kaiju_core::agent::Agent::new(config.clone());
     agent.isolate = isolate;
     let id = agent.id.clone();
     state.store.insert(agent);
@@ -194,7 +194,7 @@ pub fn start_agent_internal(state: &AppState, id: &str) -> Result<()> {
     // isolation was requested, otherwise the workspace directly.
     let run_dir = prepare_run_dir(state, &agent)?;
 
-    let config = nexus_core::agent::AgentConfig {
+    let config = kaiju_core::agent::AgentConfig {
         agent_type: agent.agent_type.clone(),
         model: agent.model.clone(),
         workspace: run_dir.clone(),
@@ -237,7 +237,7 @@ pub fn start_agent_internal(state: &AppState, id: &str) -> Result<()> {
 
 /// Resolve the working directory for an agent, creating a git worktree when
 /// isolation is requested. Returns the workspace unchanged when not isolating.
-fn prepare_run_dir(state: &AppState, agent: &nexus_core::agent::Agent) -> Result<PathBuf> {
+fn prepare_run_dir(state: &AppState, agent: &kaiju_core::agent::Agent) -> Result<PathBuf> {
     if !agent.isolate {
         return Ok(agent.workspace.clone());
     }

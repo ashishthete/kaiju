@@ -8,8 +8,8 @@
 //!   adapter parser, and write results back to the store.
 
 use chrono::{DateTime, Utc};
-use nexus_core::adapter::ParsedOutput;
-use nexus_core::agent::{AgentMetrics, AgentStatus};
+use kaiju_core::adapter::ParsedOutput;
+use kaiju_core::agent::{AgentMetrics, AgentStatus};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;

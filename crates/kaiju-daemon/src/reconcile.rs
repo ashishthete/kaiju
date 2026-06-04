@@ -5,7 +5,7 @@
 //! agents that are recorded as active yet have no live session, so the caller
 //! can mark them stopped.
 
-use nexus_core::agent::Agent;
+use kaiju_core::agent::Agent;
 
 /// Return the ids of agents that are recorded active but whose tmux session is
 /// no longer present in `live_sessions`.
@@ -21,7 +21,7 @@ pub fn orphaned_active_ids(agents: &[Agent], live_sessions: &[String]) -> Vec<St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nexus_core::agent::{Agent, AgentConfig, AgentStatus, AgentType};
+    use kaiju_core::agent::{Agent, AgentConfig, AgentStatus, AgentType};
     use std::path::PathBuf;
 
     fn agent_with_status(status: AgentStatus) -> Agent {

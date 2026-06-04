@@ -8,7 +8,7 @@
 //! Pure naming helpers ([`branch_name`], [`worktree_path`]) are tested
 //! directly; the git operations shell out and are validated manually.
 
-use nexus_core::{NexusError, Result};
+use kaiju_core::{NexusError, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

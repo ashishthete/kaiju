@@ -5,8 +5,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use nexus_core::agent::{AgentConfig, AgentType};
-use nexus_core::task::{Task, TaskSpec};
+use kaiju_core::agent::{AgentConfig, AgentType};
+use kaiju_core::task::{Task, TaskSpec};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -132,8 +132,8 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
-impl From<&nexus_core::agent::Agent> for AgentResponse {
-    fn from(agent: &nexus_core::agent::Agent) -> Self {
+impl From<&kaiju_core::agent::Agent> for AgentResponse {
+    fn from(agent: &kaiju_core::agent::Agent) -> Self {
         Self {
             id: agent.id.clone(),
             agent_type: agent.agent_type.to_string(),
@@ -267,7 +267,7 @@ async fn create_agent(
         extra_args: req.extra_args,
     };
 
-    let mut agent = nexus_core::agent::Agent::new(config);
+    let mut agent = kaiju_core::agent::Agent::new(config);
     agent.isolate = req.isolate;
     agent.batch = req.batch;
     let id = agent.id.clone();

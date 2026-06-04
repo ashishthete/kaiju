@@ -4,8 +4,8 @@
 //! loop ([`schedule_once`] / [`run_scheduler`]) does the IO: finalize tasks
 //! whose agent finished, then start queued tasks into any free slots.
 
-use nexus_core::agent::AgentStatus;
-use nexus_core::task::TaskStatus;
+use kaiju_core::agent::AgentStatus;
+use kaiju_core::task::TaskStatus;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 

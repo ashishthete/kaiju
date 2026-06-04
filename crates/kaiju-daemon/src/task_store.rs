@@ -5,8 +5,8 @@
 //! survives a daemon restart.
 
 use crate::persist;
-use nexus_core::task::{Task, TaskSpec, TaskStatus};
-use nexus_core::Result;
+use kaiju_core::task::{Task, TaskSpec, TaskStatus};
+use kaiju_core::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -159,7 +159,7 @@ impl TaskStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nexus_core::agent::AgentType;
+    use kaiju_core::agent::AgentType;
     use std::path::PathBuf;
 
     fn spec(prompt: &str) -> TaskSpec {

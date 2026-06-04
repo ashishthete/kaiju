@@ -8,8 +8,8 @@
 //! Deliberately tolerant (keyed on field presence, not a rigid schema) so minor
 //! differences between CLI versions degrade gracefully rather than breaking.
 
-use nexus_core::adapter::ParsedOutput;
-use nexus_core::agent::AgentStatus;
+use kaiju_core::adapter::ParsedOutput;
+use kaiju_core::agent::AgentStatus;
 
 /// Parse a single line of Claude stream-json. Returns `None` for blank lines,
 /// non-JSON, or unrecognized event types.

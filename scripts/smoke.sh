@@ -42,7 +42,7 @@ expect_status() {
 }
 
 echo "Starting daemon on :$PORT ..."
-KAIJU_PORT="$PORT" KAIJU_STATE="$STATE" cargo run -q -p nexus-daemon >"$LOG" 2>&1 &
+KAIJU_PORT="$PORT" KAIJU_STATE="$STATE" cargo run -q -p kaiju-daemon >"$LOG" 2>&1 &
 DAEMON_PID=$!
 for _ in $(seq 1 60); do
   curl -sf "$URL/health" >/dev/null 2>&1 && break || sleep 1

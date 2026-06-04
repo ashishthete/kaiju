@@ -1,5 +1,5 @@
-use nexus_core::adapter::Adapter;
-use nexus_core::agent::AgentType;
+use kaiju_core::adapter::Adapter;
+use kaiju_core::agent::AgentType;
 use std::collections::HashMap;
 
 use crate::claude::ClaudeAdapter;

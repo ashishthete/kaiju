@@ -9,8 +9,8 @@
 use std::process::Stdio;
 
 use chrono::Utc;
-use nexus_core::adapter::ParsedOutput;
-use nexus_core::agent::{AgentStatus, AgentType};
+use kaiju_core::adapter::ParsedOutput;
+use kaiju_core::agent::{AgentStatus, AgentType};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::runtime::Handle;

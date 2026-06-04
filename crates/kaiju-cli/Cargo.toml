@@ -1,5 +1,5 @@
 [package]
-name = "nexus-cli"
+name = "kaiju-cli"
 version.workspace = true
 edition.workspace = true
 
@@ -8,7 +8,7 @@ name = "kaiju"
 path = "src/main.rs"
 
 [dependencies]
-nexus-core = { workspace = true }
+kaiju-core = { workspace = true }
 clap = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

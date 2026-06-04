@@ -32,17 +32,17 @@ clean up a whole fleet — from a CLI, an HTTP API, or a live web dashboard.
 
 ```bash
 # CLI client -> installs the `kaiju` binary
-cargo install --path crates/nexus-cli
+cargo install --path crates/kaiju-cli
 
-# Daemon (run it from the repo, or `cargo install --path crates/nexus-daemon`)
-cargo run -p nexus-daemon
+# Daemon (run it from the repo, or `cargo install --path crates/kaiju-daemon`)
+cargo run -p kaiju-daemon
 ```
 
 ## Quickstart
 
 ```bash
 # 1. Start the daemon (defaults to 127.0.0.1:7800)
-cargo run -p nexus-daemon
+cargo run -p kaiju-daemon
 
 # 2. Open the dashboard
 open http://127.0.0.1:7800/
@@ -153,10 +153,10 @@ A layered Rust workspace (see `CLAUDE.md` for the engineering rules):
 
 | Crate | Responsibility |
 | ----- | -------------- |
-| `nexus-core` | Domain types (`Agent`, `AgentStatus`, `AgentMetrics`) and the `Adapter` trait. No IO. |
-| `nexus-adapters` | Per-CLI adapters (Claude, Codex, Gemini) that build commands and parse output. |
-| `nexus-daemon` | HTTP API, dashboard, in-memory + persisted store, tmux integration, task scheduler, and the background monitor. |
-| `nexus-cli` | The `kaiju` command-line client. |
+| `kaiju-core` | Domain types (`Agent`, `AgentStatus`, `AgentMetrics`) and the `Adapter` trait. No IO. |
+| `kaiju-adapters` | Per-CLI adapters (Claude, Codex, Gemini) that build commands and parse output. |
+| `kaiju-daemon` | HTTP API, dashboard, in-memory + persisted store, tmux integration, task scheduler, and the background monitor. |
+| `kaiju-cli` | The `kaiju` command-line client. |
 
 Adapters implement a single trait, so adding a new CLI means writing one
 `Adapter` and registering it — no daemon or CLI changes.
@@ -184,7 +184,7 @@ make e2e       # full pipeline with a fake agent (no API keys needed)
 ```
 
 Unit tests live beside each module; daemon API contract tests are in
-`crates/nexus-daemon/tests/`. See `VERIFICATION.md` for a feature-by-feature
+`crates/kaiju-daemon/tests/`. See `VERIFICATION.md` for a feature-by-feature
 manual checklist (including the browser terminal).
 
 ## Limitations

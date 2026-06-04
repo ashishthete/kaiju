@@ -3,7 +3,7 @@
 //! Two small generic IO functions, kept separate from the in-memory stores so
 //! the serialization concern is isolated and testable on its own.
 
-use nexus_core::Result;
+use kaiju_core::Result;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::path::Path;
@@ -35,7 +35,7 @@ pub fn save<T: Serialize>(path: &Path, items: &[T]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nexus_core::agent::{Agent, AgentConfig, AgentType};
+    use kaiju_core::agent::{Agent, AgentConfig, AgentType};
     use std::path::PathBuf;
 
     fn temp_path(name: &str) -> PathBuf {
