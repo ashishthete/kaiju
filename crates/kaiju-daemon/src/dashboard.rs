@@ -348,8 +348,12 @@ async function refresh() {
   el.addEventListener("drop", async (e) => {
     e.preventDefault();
     el.style.outline = "";
-    if (!selected || !ws || ws.readyState !== 1) return;
+    if (!selected || !ws || ws.readyState !== 1) {
+      note("open the Terminal tab before dropping a file");
+      return;
+    }
     for (const file of e.dataTransfer.files) {
+      note("⬆ uploading " + file.name + "…");
       try {
         const buf = await file.arrayBuffer();
         const res = await api("/agents/" + selected + "/files?name=" + encodeURIComponent(file.name), {
@@ -357,8 +361,17 @@ async function refresh() {
           headers: { "content-type": "application/octet-stream" },
           body: buf,
         });
-        if (res.ok) { ws.send((await res.json()).path + " "); if (term) term.focus(); }
-      } catch (err) { /* ignore a failed upload */ }
+        if (res.ok) {
+          const p = (await res.json()).path;
+          ws.send(p + " ");
+          if (term) term.focus();
+          note("📎 uploaded " + file.name + " → " + p);
+        } else {
+          note("upload failed (" + res.status + "): " + file.name);
+        }
+      } catch (err) {
+        note("upload failed: " + file.name);
+      }
     }
   });
 })();
