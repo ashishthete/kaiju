@@ -30,7 +30,7 @@ pub async fn xterm_css() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css")], XTERM_CSS)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Size {
     cols: u16,
     rows: u16,
@@ -44,6 +44,27 @@ pub async fn terminal_size(State(state): State<AppState>, Path(id): Path<String>
         None => (80, 24),
     };
     Json(Size { cols, rows })
+}
+
+/// `POST /agents/:id/terminal/size` — resize the tmux pane to the browser
+/// terminal's viewport so it fills the panel and content wraps correctly.
+///
+/// Dimensions are clamped to sane bounds: a runaway client can't ask tmux for a
+/// 1-column or 100k-column pane.
+pub async fn terminal_resize(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(size): Json<Size>,
+) -> StatusCode {
+    let cols = size.cols.clamp(20, 500);
+    let rows = size.rows.clamp(5, 200);
+    match state.store.get(&id) {
+        Some(agent) => match TmuxManager::resize_window(&agent.session_name, cols, rows) {
+            Ok(()) => StatusCode::NO_CONTENT,
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        },
+        None => StatusCode::NOT_FOUND,
+    }
 }
 
 #[derive(Deserialize)]

@@ -32,7 +32,7 @@ pub fn routes() -> Router<AppState> {
         .route("/agents/:id/terminal/ws", get(crate::terminal::terminal_ws))
         .route(
             "/agents/:id/terminal/size",
-            get(crate::terminal::terminal_size),
+            get(crate::terminal::terminal_size).post(crate::terminal::terminal_resize),
         )
         .route("/assets/xterm.js", get(crate::terminal::xterm_js))
         .route("/assets/xterm.css", get(crate::terminal::xterm_css))

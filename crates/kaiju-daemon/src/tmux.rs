@@ -216,6 +216,46 @@ impl TmuxManager {
         let raw = String::from_utf8_lossy(&output.stdout);
         parse_size(&raw).ok_or_else(|| NexusError::Tmux(format!("unparseable pane size: {raw:?}")))
     }
+
+    /// Resize a detached session's window to `(cols, rows)` so the captured pane
+    /// matches the browser terminal's viewport (no wasted columns, correct wrap).
+    ///
+    /// `window-size manual` is required for `resize-window` to take effect on a
+    /// session with no attached client; it is best-effort (older tmux lacks the
+    /// option) so its failure is ignored and only the resize is reported.
+    pub fn resize_window(session_name: &str, cols: u16, rows: u16) -> Result<()> {
+        let _ = Command::new("tmux")
+            .args([
+                "set-option",
+                "-t",
+                session_name,
+                "-w",
+                "window-size",
+                "manual",
+            ])
+            .output();
+
+        let output = Command::new("tmux")
+            .args([
+                "resize-window",
+                "-t",
+                session_name,
+                "-x",
+                &cols.to_string(),
+                "-y",
+                &rows.to_string(),
+            ])
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(NexusError::Tmux(format!(
+                "failed to resize window '{session_name}': {stderr}"
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

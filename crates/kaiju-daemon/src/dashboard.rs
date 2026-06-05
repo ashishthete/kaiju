@@ -16,56 +16,103 @@ pub const PAGE: &str = r#"<!doctype html>
 <link rel="stylesheet" href="/assets/xterm.css">
 <script src="/assets/xterm.js"></script>
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 1.5rem; }
-  h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
-  .sub { color: #888; font-size: .85rem; margin-bottom: 1rem; }
-  .counts { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
-  .pill { padding: .2rem .6rem; border-radius: 999px; font-size: .8rem; border: 1px solid #8884; }
-  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid #8883; }
-  th { font-weight: 600; color: #888; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; }
-  tbody tr { cursor: pointer; }
-  tbody tr:hover { background: #8881; }
-  tr.selected { outline: 2px solid #3b82f6aa; }
-  td.id { font-family: ui-monospace, monospace; }
-  .status { font-weight: 600; padding: .15rem .5rem; border-radius: 4px; font-size: .8rem; white-space: nowrap; }
-  .s-waitingforinput { background: #f59e0b22; color: #b45309; }
-  .s-stuck, .s-error { background: #ef444422; color: #b91c1c; }
-  .s-running { background: #22c55e22; color: #15803d; }
-  .s-starting { background: #3b82f622; color: #1d4ed8; }
-  .s-completed, .s-stopped { background: #88888822; color: #6b7280; }
-  .prompt { color: #888; max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .empty { color: #888; padding: 2rem 0; }
-  .attention td { background: #f59e0b0d; }
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f8fa; --surface: #ffffff; --surface-2: #eef1f5;
+    --border: #d6dbe1; --text: #1f2328; --muted: #6b7280;
+    --accent: #3b82f6; --accent-weak: #3b82f61f; --accent-fg: #fff;
+    --term-bg: #0d1117; --radius: 10px;
+    --shadow: 0 1px 2px #0000000d, 0 4px 16px #0000000a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0e14; --surface: #11161f; --surface-2: #1a2130;
+      --border: #232a36; --text: #e6edf3; --muted: #8b949e;
+      --accent: #4c8dff; --accent-weak: #4c8dff26;
+      --shadow: 0 1px 2px #0000003d, 0 8px 24px #00000040;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 1.75rem;
+         background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+  h1 { font-size: 1.35rem; margin: 0 0 .15rem; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: .85rem; margin-bottom: 1.25rem; }
 
-  #detail { margin-top: 1.5rem; border: 1px solid #8884; border-radius: 8px; padding: 1rem; }
+  .card { background: var(--surface); border: 1px solid var(--border);
+          border-radius: var(--radius); box-shadow: var(--shadow); }
+  .toolbar { padding: 1rem 1.1rem; margin-bottom: 1.25rem; }
+
+  .counts { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .pill { padding: .25rem .7rem; border-radius: 999px; font-size: .78rem; font-weight: 500;
+          background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  thead { background: var(--surface-2); }
+  th, td { text-align: left; padding: .6rem .75rem; border-bottom: 1px solid var(--border); }
+  th:first-child { border-top-left-radius: var(--radius); }
+  th:last-child { border-top-right-radius: var(--radius); }
+  th { font-weight: 600; color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+  tbody tr { cursor: pointer; transition: background .1s ease; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody tr:last-child td { border-bottom: none; }
+  tr.selected { background: var(--accent-weak); box-shadow: inset 3px 0 0 var(--accent); }
+  td.id { font-family: ui-monospace, monospace; font-weight: 500; }
+
+  .status { font-weight: 600; padding: .2rem .55rem; border-radius: 999px; font-size: .76rem;
+            white-space: nowrap; display: inline-flex; align-items: center; gap: .35rem; }
+  .status::before { content: ""; width: .45rem; height: .45rem; border-radius: 999px; background: currentColor; }
+  .s-waitingforinput { background: #f59e0b22; color: #d97706; }
+  .s-stuck, .s-error { background: #ef444422; color: #ef4444; }
+  .s-running { background: #22c55e22; color: #22c55e; }
+  .s-starting { background: #3b82f622; color: #4c8dff; }
+  .s-completed, .s-stopped { background: #88888822; color: #9aa4b2; }
+  .prompt { color: var(--muted); max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty { color: var(--muted); padding: 2.5rem 0; text-align: center; }
+  .attention td { background: #f59e0b12; }
+
+  #detail { margin-top: 1.5rem; padding: 1.1rem 1.25rem; }
   #detail[hidden] { display: none; }
-  .detail-head { display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; }
-  .detail-head .id { font-family: ui-monospace, monospace; font-weight: 600; }
+  .detail-head { display: flex; align-items: center; gap: .75rem; margin-bottom: .85rem; }
+  .detail-head .id { font-family: ui-monospace, monospace; font-weight: 600; font-size: 1.05rem; }
   .grow { flex: 1; }
-  button { font: inherit; padding: .35rem .7rem; border-radius: 5px; border: 1px solid #8886; background: #8881; cursor: pointer; }
-  button:hover { background: #8883; }
-  pre.logs { background: #0001; padding: .75rem; border-radius: 6px; max-height: 22rem; overflow: auto; font-size: .82rem; white-space: pre-wrap; word-break: break-word; }
-  .reply { display: flex; gap: .5rem; margin-top: .75rem; }
-  .reply input { flex: 1; font: inherit; padding: .4rem .6rem; border-radius: 5px; border: 1px solid #8886; background: transparent; }
-  .note { color: #888; font-size: .8rem; margin-top: .4rem; min-height: 1rem; }
-  .tabs { display: flex; gap: .25rem; margin-bottom: .5rem; }
-  .tab { font-size: .8rem; padding: .25rem .7rem; }
-  .tab.active { background: #3b82f633; border-color: #3b82f6aa; }
-  #d-term { width: 100%; height: 24rem; }
+
+  button { font: inherit; font-size: .85rem; padding: .4rem .8rem; border-radius: 7px;
+           border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+           cursor: pointer; transition: background .12s ease, border-color .12s ease; }
+  button:hover { background: var(--border); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+
+  input, select { font: inherit; padding: .45rem .65rem; border-radius: 7px;
+                  border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+
+  pre.logs { background: var(--term-bg); color: #c9d1d9; padding: .85rem; border-radius: 8px;
+             max-height: 60vh; overflow: auto; font-size: .82rem; white-space: pre-wrap; word-break: break-word; }
+  .reply { display: flex; gap: .5rem; margin-top: .85rem; }
+  .reply input { flex: 1; }
+  .note { color: var(--muted); font-size: .8rem; margin-top: .45rem; min-height: 1rem; }
+
+  .tabs { display: flex; gap: .35rem; margin-bottom: .65rem; }
+  .tab { font-size: .8rem; padding: .3rem .85rem; border-radius: 7px; }
+  .tab.active { background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+  #d-term { width: 100%; height: 62vh; min-height: 22rem; background: var(--term-bg);
+            border: 1px solid var(--border); border-radius: 8px; padding: .6rem; overflow: hidden; }
   #d-term[hidden] { display: none; }
+  #d-term .xterm-viewport { background: transparent !important; }
+
   td.actions { white-space: nowrap; }
-  td.actions button { padding: .15rem .45rem; font-size: .75rem; margin-left: .25rem; }
+  td.actions button { padding: .25rem .5rem; font-size: .8rem; margin-left: .3rem; line-height: 1; }
 </style>
 </head>
 <body>
   <h1>Kaiju</h1>
   <div class="sub">Live fleet &middot; refreshing every 2s &middot; <span id="updated"></span></div>
-  <div style="margin-bottom:1rem">
-    <button onclick="toggleNew()">+ New agent</button>
+  <div class="card toolbar" style="margin-bottom:1.25rem">
+    <button class="primary" onclick="toggleNew()">+ New agent</button>
     <form id="newform" hidden onsubmit="createAgent(event)"
-          style="margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center">
+          style="margin-top:.75rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center">
       <select id="n-type">
         <option value="claude">claude</option>
         <option value="codex">codex</option>
@@ -74,11 +121,12 @@ pub const PAGE: &str = r#"<!doctype html>
       <input id="n-ws" placeholder="workspace path" value="." style="flex:1; min-width:14rem">
       <input id="n-model" placeholder="model (optional)">
       <input id="n-prompt" placeholder="prompt" style="flex:2; min-width:18rem">
-      <label style="font-size:.85rem"><input type="checkbox" id="n-isolate"> isolate</label>
-      <button type="submit">Start</button>
+      <label style="font-size:.85rem; color:var(--muted)"><input type="checkbox" id="n-isolate"> isolate</label>
+      <button type="submit" class="primary">Start</button>
     </form>
   </div>
   <div class="counts" id="counts"></div>
+  <div class="card" style="overflow:hidden">
   <table>
     <thead><tr>
       <th>ID</th><th>Type</th><th>Model</th><th>Status</th>
@@ -86,9 +134,10 @@ pub const PAGE: &str = r#"<!doctype html>
     </tr></thead>
     <tbody id="rows"></tbody>
   </table>
+  </div>
   <div class="empty" id="empty" hidden>No agents yet.</div>
 
-  <div id="detail" hidden>
+  <div id="detail" class="card" hidden>
     <div class="detail-head">
       <span class="id" id="d-id"></span>
       <button title="Copy full ID" onclick="copyId(selected)">⧉ copy id</button>
@@ -107,7 +156,7 @@ pub const PAGE: &str = r#"<!doctype html>
     <div id="d-term"></div>
     <div class="reply">
       <input id="d-reply" placeholder="Reply or approve (Enter to send)…" onkeydown="if(event.key==='Enter')sendReply()">
-      <button onclick="sendReply()">Send</button>
+      <button class="primary" onclick="sendReply()">Send</button>
     </div>
     <div class="note" id="d-note"></div>
   </div>
@@ -129,25 +178,110 @@ function showTab(which) {
   if (onTerm) openTerminal(); else { closeTerminal(); refreshDetail(); }
 }
 
+// Terminal appearance — kept in one place so the measuring span used to fit the
+// pane to the panel matches exactly what xterm renders.
+const TERM_FONT = "'JetBrains Mono','SF Mono','Cascadia Code',Menlo,Monaco,'DejaVu Sans Mono',ui-monospace,monospace";
+const TERM_FONT_SIZE = 13, TERM_LINE_HEIGHT = 1.25, TERM_LETTER = 0.2, TERM_PAD = 10;
+const TERM_THEME = {
+  background: '#0d1117', foreground: '#c9d1d9', cursor: '#c9d1d9',
+  selectionBackground: '#3b82f655',
+  black: '#484f58', red: '#ff7b72', green: '#3fb950', yellow: '#d29922',
+  blue: '#58a6ff', magenta: '#bc8cff', cyan: '#39c5cf', white: '#b1bac4',
+  brightBlack: '#6e7681', brightRed: '#ffa198', brightGreen: '#56d364',
+  brightYellow: '#e3b341', brightBlue: '#79c0ff', brightMagenta: '#d2a8ff',
+  brightCyan: '#56d4dd', brightWhite: '#f0f6fc',
+};
+
+// Measure one monospace cell as xterm will draw it, then derive how many
+// cols/rows fit the panel. Avoids depending on xterm internals or a fit addon.
+function fitTermSize(host) {
+  const span = document.createElement("span");
+  span.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font-family:" +
+    TERM_FONT + ";font-size:" + TERM_FONT_SIZE + "px;letter-spacing:" + TERM_LETTER + "px;";
+  span.textContent = "0".repeat(100);
+  document.body.appendChild(span);
+  const cellW = span.getBoundingClientRect().width / 100;
+  document.body.removeChild(span);
+  const cellH = TERM_FONT_SIZE * TERM_LINE_HEIGHT;
+  const cols = Math.max(20, Math.floor((host.clientWidth - TERM_PAD * 2) / cellW));
+  const rows = Math.max(6, Math.floor((host.clientHeight - TERM_PAD * 2) / cellH));
+  return { cols, rows };
+}
+
+// Resize the tmux pane to match the browser viewport so the capture fills the
+// panel and wraps at the right column. Best-effort.
+async function syncBackendSize(cols, rows) {
+  try {
+    await api("/agents/" + selected + "/terminal/size",
+      { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cols, rows }) });
+  } catch (e) { /* best effort */ }
+}
+
 async function openTerminal() {
   closeTerminal();
   if (!selected || !window.Terminal) return;
-  let cols = 80, rows = 24;
-  try {
-    const res = await api("/agents/" + selected + "/terminal/size");
-    if (res.ok) { const s = await res.json(); cols = s.cols || 80; rows = s.rows || 24; }
-  } catch (e) { /* use defaults */ }
-  term = new Terminal({ cols, rows, fontSize: 13, cursorBlink: true,
-                        convertEol: false, scrollback: 0 });
-  term.open(document.getElementById("d-term"));
+  const host = document.getElementById("d-term");
+  const { cols, rows } = fitTermSize(host);
+  await syncBackendSize(cols, rows);
+  // convertEol: tmux `capture-pane` separates rows with a bare LF (no CR), so
+  // each line must return to column 0 — without this every partial line starts
+  // where the previous one ended and the screen staircases to the right.
+  term = new Terminal({ cols, rows, cursorBlink: true,
+                        convertEol: true, scrollback: 0,
+                        fontFamily: TERM_FONT, fontSize: TERM_FONT_SIZE,
+                        fontWeight: 400, fontWeightBold: 600,
+                        lineHeight: TERM_LINE_HEIGHT, letterSpacing: TERM_LETTER,
+                        rightClickSelectsWord: true, macOptionClickForcesSelection: true,
+                        theme: TERM_THEME });
+  term.open(host);
+
+  // The pane is redrawn as a full repaint every tick, which would wipe an active
+  // text selection. Hold incoming frames while the user is selecting, then apply
+  // the latest one once the selection clears — keeps select-and-copy usable.
+  let pendingFrame = null;
+  term.onSelectionChange(() => {
+    if (term && !term.hasSelection() && pendingFrame != null) {
+      term.write(pendingFrame); pendingFrame = null;
+    }
+  });
+  // Cmd/Ctrl+C copies the selection (like a real terminal) instead of being sent
+  // to the agent as SIGINT; with no selection it falls through to the app.
+  term.attachCustomKeyEventHandler((e) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (e.type === "keydown" && mod && (e.key === "c" || e.key === "C") && term.hasSelection()) {
+      if (navigator.clipboard) navigator.clipboard.writeText(term.getSelection());
+      note("copied selection");
+      return false;
+    }
+    return true;
+  });
+
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const q = token ? ("?token=" + encodeURIComponent(token)) : "";
   ws = new WebSocket(proto + "://" + location.host +
                      "/agents/" + selected + "/terminal/ws" + q);
-  ws.onmessage = (e) => { if (term) term.write(e.data); };
+  ws.onmessage = (e) => {
+    if (!term) return;
+    if (term.hasSelection()) { pendingFrame = e.data; return; }
+    term.write(e.data);
+  };
   ws.onclose = () => { if (term) term.write("\r\n[disconnected]\r\n"); };
   term.onData((d) => { if (ws && ws.readyState === 1) ws.send(d); });
 }
+
+// Re-fit the pane when the window changes size (debounced).
+let termResizeTimer = null;
+window.addEventListener("resize", () => {
+  if (!term || activeTab !== "term") return;
+  clearTimeout(termResizeTimer);
+  termResizeTimer = setTimeout(() => {
+    if (!term) return;
+    const { cols, rows } = fitTermSize(document.getElementById("d-term"));
+    try { term.resize(cols, rows); } catch (e) {}
+    syncBackendSize(cols, rows);
+  }, 200);
+});
 
 function closeTerminal() {
   if (ws) { try { ws.close(); } catch (e) {} ws = null; }
@@ -230,12 +364,16 @@ function closeDetail() {
 }
 
 async function refreshDetail() {
-  if (activeTab === "term") return;
   if (!selected) return;
+  // Keep the header status in sync with the table on every poll, regardless of
+  // which tab is open.
   const st = lastStatus[selected];
   const badge = document.getElementById("d-status");
   badge.textContent = st || "?";
   badge.className = "status s-" + (st || "");
+  // Logs are hidden while the terminal is open — skip fetching them, but the
+  // status above is already up to date.
+  if (activeTab === "term") return;
   try {
     const res = await api("/agents/" + selected + "/logs");
     if (res.ok) {
