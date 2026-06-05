@@ -228,7 +228,7 @@ async function openTerminal() {
   // each line must return to column 0 — without this every partial line starts
   // where the previous one ended and the screen staircases to the right.
   term = new Terminal({ cols, rows, cursorBlink: true,
-                        convertEol: true, scrollback: 0,
+                        convertEol: true, scrollback: 500,
                         fontFamily: TERM_FONT, fontSize: TERM_FONT_SIZE,
                         fontWeight: 400, fontWeightBold: 600,
                         lineHeight: TERM_LINE_HEIGHT, letterSpacing: TERM_LETTER,
@@ -236,15 +236,20 @@ async function openTerminal() {
                         theme: TERM_THEME });
   term.open(host);
 
-  // The pane is redrawn as a full repaint every tick, which would wipe an active
-  // text selection. Hold incoming frames while the user is selecting, then apply
-  // the latest one once the selection clears — keeps select-and-copy usable.
+  // The pane is a full repaint every tick, which would wipe a text selection and
+  // yank the view to the bottom. So hold incoming frames while the user is busy —
+  // selecting text or scrolled up into history — then apply the latest once they
+  // return to the live bottom. Keeps select/copy and 500-line scrollback usable.
   let pendingFrame = null;
-  term.onSelectionChange(() => {
-    if (term && !term.hasSelection() && pendingFrame != null) {
+  const isPinned = () => term && (term.hasSelection() ||
+    term.buffer.active.viewportY < term.buffer.active.baseY);
+  const flushPending = () => {
+    if (term && !isPinned() && pendingFrame != null) {
       term.write(pendingFrame); pendingFrame = null;
     }
-  });
+  };
+  term.onSelectionChange(flushPending);
+  term.onScroll(flushPending);
   // Cmd/Ctrl+C copies the selection (like a real terminal) instead of being sent
   // to the agent as SIGINT; with no selection it falls through to the app.
   term.attachCustomKeyEventHandler((e) => {
@@ -263,7 +268,7 @@ async function openTerminal() {
                      "/agents/" + selected + "/terminal/ws" + q);
   ws.onmessage = (e) => {
     if (!term) return;
-    if (term.hasSelection()) { pendingFrame = e.data; return; }
+    if (isPinned()) { pendingFrame = e.data; return; }
     term.write(e.data);
   };
   ws.onclose = () => { if (term) term.write("\r\n[disconnected]\r\n"); };

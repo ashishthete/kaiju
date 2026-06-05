@@ -150,12 +150,25 @@ impl TmuxManager {
         Ok(())
     }
 
-    /// Capture the *visible* pane (current screen) with ANSI escapes preserved
-    /// (`-e`), for rendering in a browser terminal. Unlike `capture_pane`, it
-    /// omits `-S` so the result is exactly one screen — ideal for repaint.
+    /// Lines of scrollback history included in a browser-terminal capture, so
+    /// the user can scroll back through recent output.
+    pub const SCROLLBACK_LINES: u32 = 500;
+
+    /// Capture the visible pane plus `SCROLLBACK_LINES` of history with ANSI
+    /// escapes preserved (`-e`), for rendering in a browser terminal. `-S`
+    /// reaches back above the current screen so the mirror has scrollback.
     pub fn capture_pane_colored(session_name: &str) -> Result<String> {
+        let start = -(Self::SCROLLBACK_LINES as i64);
         let output = Command::new("tmux")
-            .args(["capture-pane", "-t", session_name, "-e", "-p"])
+            .args([
+                "capture-pane",
+                "-t",
+                session_name,
+                "-e",
+                "-p",
+                "-S",
+                &start.to_string(),
+            ])
             .output()?;
 
         if !output.status.success() {

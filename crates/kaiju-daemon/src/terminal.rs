@@ -117,8 +117,11 @@ async fn run_terminal(mut socket: WebSocket, session: String) {
                 let fp = fingerprint(&frame);
                 if fp != last {
                     last = fp;
-                    // Home cursor + clear, then the screen: a stable repaint.
-                    let payload = format!("\x1b[H\x1b[J{frame}");
+                    // Home cursor, clear screen *and* scrollback, then rewrite:
+                    // a stable repaint whose buffer is exactly the captured
+                    // window (history + screen), so xterm's scrollback mirrors
+                    // tmux's without accumulating duplicate frames.
+                    let payload = format!("\x1b[H\x1b[2J\x1b[3J{frame}");
                     if socket.send(Message::Text(payload)).await.is_err() {
                         return;
                     }
