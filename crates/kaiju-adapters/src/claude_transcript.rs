@@ -19,6 +19,8 @@ pub struct Usage {
     pub output_tokens: u64,
     pub cache_creation_tokens: u64,
     pub cache_read_tokens: u64,
+    /// Model of the most recent assistant message (for per-model pricing).
+    pub model: Option<String>,
 }
 
 impl Usage {
@@ -80,6 +82,9 @@ pub fn aggregate_usage(jsonl: &str) -> Usage {
         total.output_tokens += field("output_tokens");
         total.cache_creation_tokens += field("cache_creation_input_tokens");
         total.cache_read_tokens += field("cache_read_input_tokens");
+        if let Some(model) = message.get("model").and_then(Value::as_str) {
+            total.model = Some(model.to_string());
+        }
     }
 
     total

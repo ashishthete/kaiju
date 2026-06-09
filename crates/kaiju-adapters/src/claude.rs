@@ -116,7 +116,7 @@ impl Adapter for ClaudeAdapter {
         Some(ParsedOutput {
             status: None,
             tokens_used: Some(usage.tokens_used()),
-            estimated_cost_usd: None,
+            estimated_cost_usd: crate::pricing::cost(&usage),
         })
     }
 

@@ -121,7 +121,23 @@ need `KAIJU_URL` and, if auth is on, `KAIJU_TOKEN`).
 | `KAIJU_TOKEN` | Require this bearer token (auth off if unset) | — |
 | `KAIJU_SLACK_WEBHOOK` | Also post "needs you" alerts to Slack | — |
 | `KAIJU_CLAUDE_BIN` / `KAIJU_CODEX_BIN` / `KAIJU_GEMINI_BIN` | Override an agent's executable (pin a version / use a stub) | found on `PATH` |
+| `KAIJU_PRICING` | Token pricing file for cost estimates | `~/.kaiju/pricing.json` |
 | `KAIJU_URL` | (client) Daemon URL | `http://127.0.0.1:7800` |
+
+**Metrics & cost:** token counts come from Claude Code's own session transcript
+(`~/.claude/projects/<dir>/<session>.jsonl`), so they're exact rather than
+scraped. Cost is shown only if you provide pricing — Kaiju ships none, since
+rates change. Create `~/.kaiju/pricing.json` mapping model id to per-million
+rates (cost is blank for any model not listed; restart to pick up edits):
+
+```json
+{
+  "claude-opus-4-8":   { "input": 5, "output": 25, "cache_write": 6.25, "cache_read": 0.5 },
+  "claude-sonnet-4-6": { "input": 3, "output": 15, "cache_write": 3.75, "cache_read": 0.3 }
+}
+```
+
+> The rates above are **placeholders** — fill in the current published prices.
 
 **Auth:** set `KAIJU_TOKEN` before exposing the daemon beyond localhost. Clients
 then send `Authorization: Bearer <token>` (the CLI reads `KAIJU_TOKEN`; the
