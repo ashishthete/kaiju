@@ -177,6 +177,16 @@ pub trait Adapter: Send + Sync {
         None
     }
 
+    /// Read precise token/cost metrics for a running session from the CLI's own
+    /// transcript or log, given where it runs (`run_dir`) and when it started
+    /// (`since_unix`, Unix seconds). This is authoritative — preferred over the
+    /// heuristics in [`parse_output`] — but only some CLIs keep such a record.
+    ///
+    /// Default: the CLI exposes no transcript, so nothing is read.
+    fn read_metrics(&self, _run_dir: &std::path::Path, _since_unix: i64) -> Option<ParsedOutput> {
+        None
+    }
+
     /// Human-readable name for this adapter.
     fn display_name(&self) -> &str;
 

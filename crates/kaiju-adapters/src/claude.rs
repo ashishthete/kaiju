@@ -4,6 +4,16 @@ use kaiju_core::adapter::{
 };
 use kaiju_core::agent::{AgentConfig, AgentStatus, AgentType};
 use regex::Regex;
+use std::sync::LazyLock;
+
+/// Fallback metric patterns, compiled once. Primary metrics come from the
+/// session transcript ([`ClaudeAdapter::read_metrics`]); these only catch a
+/// "Total cost:" / "Tokens used:" line if the CLI prints one. The literals are
+/// constant, so a failed compile is a programmer error, not a runtime condition.
+static COST_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"Total cost:\s*\$(\d+\.?\d*)").unwrap());
+static TOKEN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[Tt]okens?\s*(?:used)?:?\s*(\d[\d,]*)").unwrap());
 
 /// Adapter for Claude Code CLI.
 ///
@@ -68,15 +78,11 @@ impl Adapter for ClaudeAdapter {
             result.status = Some(AgentStatus::Running);
         }
 
-        // Parse cost: "Total cost: $1.42"
-        let cost_re = Regex::new(r"Total cost:\s*\$(\d+\.?\d*)").unwrap();
-        if let Some(caps) = cost_re.captures(output) {
+        // Fallback metrics from the screen (overridden by transcript when present).
+        if let Some(caps) = COST_RE.captures(output) {
             result.estimated_cost_usd = caps[1].parse().ok();
         }
-
-        // Parse tokens: "Tokens used: 12345" or similar
-        let token_re = Regex::new(r"[Tt]okens?\s*(?:used)?:?\s*(\d[\d,]*)").unwrap();
-        if let Some(caps) = token_re.captures(output) {
+        if let Some(caps) = TOKEN_RE.captures(output) {
             let cleaned = caps[1].replace(',', "");
             result.tokens_used = cleaned.parse().ok();
         }
@@ -103,6 +109,15 @@ impl Adapter for ClaudeAdapter {
         }
         cmd.push_str(&format!(" '{escaped}'"));
         Some(cmd)
+    }
+
+    fn read_metrics(&self, run_dir: &std::path::Path, since_unix: i64) -> Option<ParsedOutput> {
+        let usage = crate::claude_transcript::read_usage(run_dir, since_unix)?;
+        Some(ParsedOutput {
+            status: None,
+            tokens_used: Some(usage.tokens_used()),
+            estimated_cost_usd: None,
+        })
     }
 
     fn display_name(&self) -> &str {

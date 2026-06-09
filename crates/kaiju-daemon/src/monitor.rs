@@ -117,7 +117,22 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
         };
 
         let now = Utc::now();
-        let parsed = adapter.parse_output(&output);
+        let mut parsed = adapter.parse_output(&output);
+
+        // Prefer authoritative token/cost metrics from the CLI's own transcript
+        // (e.g. Claude's session JSONL) over the screen-scraping heuristics.
+        if let Some(started) = agent.started_at {
+            let run_dir = agent
+                .worktree_path
+                .clone()
+                .unwrap_or_else(|| agent.workspace.clone());
+            if let Some(precise) = adapter.read_metrics(&run_dir, started.timestamp()) {
+                parsed.tokens_used = precise.tokens_used.or(parsed.tokens_used);
+                parsed.estimated_cost_usd =
+                    precise.estimated_cost_usd.or(parsed.estimated_cost_usd);
+            }
+        }
+
         let metrics = updated_metrics(agent.started_at, &agent.metrics, &parsed, now);
         state.store.update_metrics(&agent.id, metrics);
 
