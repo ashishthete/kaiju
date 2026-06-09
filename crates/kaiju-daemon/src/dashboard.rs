@@ -109,8 +109,11 @@ pub const PAGE: &str = r#"<!doctype html>
 <body>
   <h1>Kaiju</h1>
   <div class="sub">Live fleet &middot; refreshing every 2s &middot; <span id="updated"></span></div>
-  <div class="card toolbar" style="margin-bottom:1.25rem">
+  <div class="card toolbar" style="margin-bottom:1.25rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap">
     <button class="primary" onclick="toggleNew()">+ New agent</button>
+    <label style="font-size:.85rem; color:var(--muted); margin-left:auto">
+      <input type="checkbox" id="notify-toggle" onchange="toggleNotify()"> notify when an agent needs input
+    </label>
     <form id="newform" hidden onsubmit="createAgent(event)"
           style="margin-top:.75rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center">
       <select id="n-type">
@@ -167,6 +170,42 @@ let selected = null;
 let lastStatus = {};
 let token = localStorage.getItem("kaiju_token") || "";
 let term = null, ws = null, activeTab = "term";
+
+// Statuses that mean an agent needs the operator. A transition *into* one of
+// these fires a desktop notification (opt-in, persisted).
+const ATTENTION = new Set(["waitingforinput", "stuck"]);
+let notifyOn = localStorage.getItem("kaiju_notify") === "1";
+
+function initNotify() {
+  const box = document.getElementById("notify-toggle");
+  if (box) box.checked = notifyOn;
+  if (notifyOn && "Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+function toggleNotify() {
+  notifyOn = document.getElementById("notify-toggle").checked;
+  localStorage.setItem("kaiju_notify", notifyOn ? "1" : "0");
+  if (notifyOn && "Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission().then((p) => {
+      if (p !== "granted") note("notifications are blocked in browser settings");
+    });
+  }
+}
+
+// Fire a desktop toast when an agent *newly* enters an attention state. Skips
+// the first sighting (prev === undefined) so opening the page doesn't spam one
+// per already-waiting agent; the tag coalesces repeats for the same agent.
+function notifyTransition(prev, agent) {
+  if (!notifyOn || !("Notification" in window) || Notification.permission !== "granted") return;
+  if (prev === undefined || prev === agent.status || !ATTENTION.has(agent.status)) return;
+  const n = new Notification("Kaiju · " + agent.id.slice(0, 10) + " " + agent.status, {
+    body: agent.prompt || agent.agent_type,
+    tag: agent.id,
+  });
+  n.onclick = () => { window.focus(); select(agent.id); n.close(); };
+}
 
 function showTab(which) {
   activeTab = which;
@@ -318,8 +357,12 @@ function note(msg) { document.getElementById("d-note").textContent = msg; }
 
 function render(agents) {
   document.getElementById("empty").hidden = agents.length > 0;
+  const prev = lastStatus;            // previous poll's statuses, to detect transitions
   lastStatus = {};
-  for (const a of agents) lastStatus[a.id] = a.status;
+  for (const a of agents) {
+    lastStatus[a.id] = a.status;
+    notifyTransition(prev[a.id], a);
+  }
 
   const counts = {};
   for (const a of agents) counts[a.status] = (counts[a.status] || 0) + 1;
@@ -519,6 +562,7 @@ async function refresh() {
   });
 })();
 
+initNotify();
 refresh();
 setInterval(refresh, 2000);
 </script>
