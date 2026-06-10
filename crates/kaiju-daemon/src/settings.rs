@@ -19,10 +19,11 @@
 use std::path::PathBuf;
 
 use kaiju_core::agent::{AgentConfig, AgentMetrics};
-use serde::Deserialize;
+use kaiju_core::{NexusError, Result};
+use serde::{Deserialize, Serialize};
 
 /// Daemon-wide defaults for new agents.
-#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
 pub struct Settings {
     /// Agent type to use when a request doesn't specify one.
     #[serde(default)]
@@ -99,6 +100,24 @@ pub fn load() -> Settings {
         return Settings::default();
     };
     serde_json::from_str(&content).unwrap_or_default()
+}
+
+/// Persist settings to the config file (pretty JSON), creating the directory if
+/// needed. Errors when there's no writable path (no `KAIJU_CONFIG` and no `HOME`).
+pub fn save(settings: &Settings) -> Result<()> {
+    let path = settings_path().ok_or_else(|| {
+        NexusError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no config path (set KAIJU_CONFIG or HOME)",
+        ))
+    })?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(NexusError::Io)?;
+    }
+    let json = serde_json::to_string_pretty(settings)
+        .map_err(|e| NexusError::Io(std::io::Error::other(e.to_string())))?;
+    std::fs::write(&path, json).map_err(NexusError::Io)?;
+    Ok(())
 }
 
 #[cfg(test)]

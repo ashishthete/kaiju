@@ -31,8 +31,9 @@ pub struct AppState {
     pub adapters: std::sync::Arc<AdapterRegistry>,
     /// When set, requests must present this bearer token. `None` disables auth.
     pub auth_token: Option<String>,
-    /// Defaults applied to every newly-created agent.
-    pub settings: std::sync::Arc<crate::settings::Settings>,
+    /// Defaults applied to every newly-created agent. Behind a lock so the
+    /// Preferences endpoint can update it live (no daemon restart needed).
+    pub settings: std::sync::Arc<std::sync::RwLock<crate::settings::Settings>>,
 }
 
 impl AppState {
@@ -53,7 +54,9 @@ impl AppState {
             tasks,
             adapters: std::sync::Arc::new(AdapterRegistry::with_defaults()),
             auth_token: None,
-            settings: std::sync::Arc::new(crate::settings::Settings::default()),
+            settings: std::sync::Arc::new(std::sync::RwLock::new(
+                crate::settings::Settings::default(),
+            )),
         }
     }
 }
@@ -113,8 +116,9 @@ pub fn spawn_started_agent(
     config: &kaiju_core::agent::AgentConfig,
     isolate: bool,
 ) -> Result<String> {
-    let config = state.settings.apply(config.clone());
-    let isolate = isolate || state.settings.isolate;
+    let defaults = state.settings.read().expect("settings lock").clone();
+    let config = defaults.apply(config.clone());
+    let isolate = isolate || defaults.isolate;
     let mut agent = kaiju_core::agent::Agent::new(config);
     agent.isolate = isolate;
     let id = agent.id.clone();
@@ -178,7 +182,7 @@ pub async fn run(addr: SocketAddr) -> Result<()> {
     if state.auth_token.is_some() {
         info!("token authentication enabled");
     }
-    state.settings = std::sync::Arc::new(crate::settings::load());
+    state.settings = std::sync::Arc::new(std::sync::RwLock::new(crate::settings::load()));
 
     // Background task: poll running agents and update their status/metrics.
     tokio::spawn(monitor::run_monitor(state.clone(), MONITOR_INTERVAL));

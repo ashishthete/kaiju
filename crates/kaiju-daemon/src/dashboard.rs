@@ -175,10 +175,19 @@ pub const PAGE: &str = r#"<!doctype html>
   .popover { position: fixed; inset: auto; top: 4.6rem; right: 1.75rem; margin: 0;
              background: var(--surface); color: var(--text); border: 1px solid var(--border);
              border-radius: var(--radius); box-shadow: var(--shadow); padding: .9rem 1rem;
-             min-width: 17rem; max-width: 24rem; }
+             min-width: 18rem; max-width: 24rem; max-height: 85vh; overflow: auto; }
   .popover:not(:popover-open) { display: none; }
-  .pop-title { font-weight: 600; font-size: .9rem; margin-bottom: .7rem; }
+  .pop-title { font-weight: 600; font-size: .95rem; margin-bottom: .7rem; }
   .popover .check { margin-bottom: .7rem; }
+  .pop-section { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+                 color: var(--muted); font-weight: 600; margin: .9rem 0 .5rem;
+                 border-top: 1px solid var(--border); padding-top: .8rem; }
+  .pfield { display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+            font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+  .pfield > span { flex: 0 0 7.5rem; }
+  .pfield input, .pfield select { flex: 1; min-width: 0; }
+  .pop-actions { display: flex; justify-content: flex-end; margin-top: .4rem; }
+  .pop-status { font-size: .78rem; color: var(--muted); margin-top: .5rem; min-height: 1rem; }
   .pop-hint { font-size: .75rem; color: var(--muted); margin-top: .6rem; line-height: 1.4;
               border-top: 1px solid var(--border); padding-top: .6rem; }
   .pop-hint code { font-family: ui-monospace, monospace; background: var(--surface-2);
@@ -203,16 +212,39 @@ pub const PAGE: &str = r#"<!doctype html>
     </select>
     <button id="pause-btn" onclick="togglePause()" title="Pause / resume live updates">⏸ Pause</button>
     <button class="icon" id="settings-btn" popovertarget="settings-pop" style="margin-left:auto"
-            title="Settings" aria-label="Settings">⚙</button>
+            title="Preferences" aria-label="Preferences">⚙</button>
   </div>
 
-  <div id="settings-pop" popover class="popover" aria-label="Settings">
-    <div class="pop-title">Settings</div>
+  <div id="settings-pop" popover class="popover" aria-label="Preferences">
+    <div class="pop-title">Preferences</div>
     <label class="check">
       <input type="checkbox" id="notify-toggle" onchange="toggleNotify()">
       Notify when an agent needs input
     </label>
-    <div class="pop-hint">Per-browser, and needs this tab open (and macOS Focus/Do&nbsp;Not&nbsp;Disturb off). For alerts without the browser, run the daemon with <code>KAIJU_DESKTOP_NOTIFY=1</code>.</div>
+    <div class="pop-hint">Browser notifications are per-browser and need this tab open (and macOS Focus/Do&nbsp;Not&nbsp;Disturb off).</div>
+
+    <div class="pop-section">Defaults for new agents</div>
+    <label class="pfield"><span>Default agent</span>
+      <select id="pref-type">
+        <option value="">—</option>
+        <option value="claude">claude</option>
+        <option value="codex">codex</option>
+        <option value="gemini">gemini</option>
+      </select>
+    </label>
+    <label class="pfield"><span>Default model</span>
+      <input id="pref-model" placeholder="e.g. claude-opus-4-8"></label>
+    <label class="pfield"><span>Default args</span>
+      <input id="pref-args" placeholder="--permission-mode acceptEdits"></label>
+    <label class="check"><input type="checkbox" id="pref-isolate"> Isolate new agents in a git worktree</label>
+    <label class="pfield"><span>Max tokens</span>
+      <input id="pref-maxtok" type="number" min="0" placeholder="no cap"></label>
+    <label class="pfield"><span>Max cost ($)</span>
+      <input id="pref-maxcost" type="number" min="0" step="0.01" placeholder="no cap"></label>
+
+    <div class="pop-actions"><button class="primary" onclick="savePrefs()">Save</button></div>
+    <div class="pop-status" id="pref-status" aria-live="polite"></div>
+    <div class="pop-hint">Defaults apply to agents created <strong>after</strong> saving — running agents keep their settings. Token pricing for cost lives in <code>~/.kaiju/pricing.json</code>.</div>
   </div>
 
   <dialog id="newmodal" class="modal" onclick="if(event.target===this)closeNew()">

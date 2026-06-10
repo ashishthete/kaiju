@@ -18,6 +18,48 @@ function initNotify() {
   if (notifyOn && "Notification" in window && Notification.permission === "default") {
     Notification.requestPermission();
   }
+  // Refresh the Preferences form from the daemon each time the popover opens.
+  const pop = document.getElementById("settings-pop");
+  if (pop) pop.addEventListener("toggle", (e) => { if (e.newState === "open") loadPrefs(); });
+}
+
+// Load the daemon's current defaults into the Preferences form (on popover open).
+async function loadPrefs() {
+  try {
+    const res = await api("/settings");
+    if (!res.ok) return;
+    const s = await res.json();
+    document.getElementById("pref-type").value = s.default_agent_type || "";
+    document.getElementById("pref-model").value = s.default_model || "";
+    document.getElementById("pref-args").value = (s.default_extra_args || []).join(" ");
+    document.getElementById("pref-isolate").checked = !!s.isolate;
+    document.getElementById("pref-maxtok").value = s.max_tokens != null ? s.max_tokens : "";
+    document.getElementById("pref-maxcost").value = s.max_cost_usd != null ? s.max_cost_usd : "";
+  } catch (e) { /* leave fields as-is */ }
+}
+
+// Persist the daemon defaults. They apply to agents created after saving.
+async function savePrefs() {
+  const args = document.getElementById("pref-args").value.trim();
+  const tok = document.getElementById("pref-maxtok").value.trim();
+  const cost = document.getElementById("pref-maxcost").value.trim();
+  const body = {
+    default_agent_type: document.getElementById("pref-type").value || null,
+    default_model: document.getElementById("pref-model").value.trim() || null,
+    default_extra_args: args ? args.split(/\s+/) : [],
+    isolate: document.getElementById("pref-isolate").checked,
+    max_tokens: tok === "" ? null : (parseInt(tok, 10) || null),
+    max_cost_usd: cost === "" ? null : (parseFloat(cost) || null),
+  };
+  const status = document.getElementById("pref-status");
+  status.textContent = "saving…";
+  try {
+    const res = await api("/settings", {
+      method: "PUT", headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    status.textContent = res.ok ? "saved — applies to new agents" : ((await res.json()).error || "save failed");
+  } catch (e) { status.textContent = "save failed"; }
 }
 
 function toggleNotify() {

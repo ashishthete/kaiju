@@ -137,7 +137,12 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
         state.store.update_metrics(&agent.id, metrics.clone());
 
         // Enforce a configured token/cost budget: stop the agent once it's hit.
-        if let Some(reason) = state.settings.budget_exceeded(&metrics) {
+        let budget = state
+            .settings
+            .read()
+            .expect("settings lock")
+            .budget_exceeded(&metrics);
+        if let Some(reason) = budget {
             tracing::info!("stopping agent {} — {reason}", agent.id);
             let _ = crate::server::stop_agent_internal(state, &agent.id);
             continue;

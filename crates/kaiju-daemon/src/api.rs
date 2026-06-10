@@ -42,6 +42,7 @@ pub fn routes() -> Router<AppState> {
             "/assets/dashboard-utils.js",
             get(crate::dashboard::dashboard_utils_js),
         )
+        .route("/settings", get(get_settings).put(put_settings))
         .route("/tasks", get(list_tasks).post(create_task))
         .route("/tasks/:id", get(get_task))
         .route("/tasks/:id/cancel", post(cancel_task))
@@ -164,6 +165,25 @@ impl From<&kaiju_core::agent::Agent> for AgentResponse {
     }
 }
 
+/// `GET /settings` — the current daemon defaults (Preferences).
+async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
+    let snapshot = state.settings.read().expect("settings lock").clone();
+    Json(snapshot)
+}
+
+/// `PUT /settings` — persist new defaults and apply them live. They take effect
+/// for agents created *after* the change; running agents are unaffected.
+async fn put_settings(
+    State(state): State<AppState>,
+    Json(new_settings): Json<crate::settings::Settings>,
+) -> impl IntoResponse {
+    if let Err(e) = crate::settings::save(&new_settings) {
+        return Err(err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()));
+    }
+    *state.settings.write().expect("settings lock") = new_settings.clone();
+    Ok(Json(new_settings))
+}
+
 fn err(status: StatusCode, msg: &str) -> impl IntoResponse {
     (
         status,
@@ -256,13 +276,10 @@ async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> impl IntoResponse {
+    let defaults = state.settings.read().expect("settings lock").clone();
     // Fall back to the configured default agent type when none is given.
     let type_str = if req.agent_type.trim().is_empty() {
-        state
-            .settings
-            .default_agent_type
-            .clone()
-            .unwrap_or_default()
+        defaults.default_agent_type.clone().unwrap_or_default()
     } else {
         req.agent_type.clone()
     };
@@ -274,7 +291,7 @@ async fn create_agent(
     let agent_type: AgentType = type_str.parse().expect("infallible");
 
     // Apply global defaults (model, extra args) for fields the request omits.
-    let config = state.settings.apply(AgentConfig {
+    let config = defaults.apply(AgentConfig {
         agent_type,
         model: req.model,
         workspace: PathBuf::from(&req.workspace),
@@ -283,7 +300,7 @@ async fn create_agent(
     });
 
     let mut agent = kaiju_core::agent::Agent::new(config);
-    agent.isolate = req.isolate || state.settings.isolate;
+    agent.isolate = req.isolate || defaults.isolate;
     agent.batch = req.batch;
     let id = agent.id.clone();
     state.store.insert(agent);
