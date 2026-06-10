@@ -113,6 +113,26 @@ pub const PAGE: &str = r#"<!doctype html>
 
   td.actions { white-space: nowrap; }
   td.actions button { padding: .25rem .5rem; font-size: .8rem; margin-left: .3rem; line-height: 1; }
+
+  dialog.modal { border: 1px solid var(--border); border-radius: var(--radius);
+                 background: var(--surface); color: var(--text); padding: 0;
+                 width: min(560px, 92vw); box-shadow: var(--shadow); }
+  dialog.modal::backdrop { background: #0008; backdrop-filter: blur(2px); }
+  dialog.modal form { padding: 1.25rem 1.4rem 1.4rem; display: flex; flex-direction: column; gap: .9rem; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; }
+  .modal-head h2 { margin: 0; font-size: 1.1rem; letter-spacing: -.01em; }
+  .field { display: flex; flex-direction: column; gap: .3rem; font-size: .8rem; color: var(--muted); }
+  .field span em { color: var(--accent); font-style: normal; }
+  .field input, .field select, .field textarea { width: 100%; }
+  textarea { font: inherit; padding: .45rem .65rem; border-radius: 7px; resize: vertical;
+             border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+  details.advanced { border-top: 1px solid var(--border); padding-top: .7rem; }
+  details.advanced summary { cursor: pointer; color: var(--muted); font-size: .82rem; }
+  details.advanced > .field, details.advanced > .check { margin-top: .7rem; }
+  .check { display: flex; align-items: center; gap: .45rem; font-size: .85rem; color: var(--muted); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .3rem; }
+  .icon { padding: .15rem .5rem; font-size: 1.1rem; line-height: 1; }
 </style>
 </head>
 <body>
@@ -123,20 +143,44 @@ pub const PAGE: &str = r#"<!doctype html>
     <label style="font-size:.85rem; color:var(--muted); margin-left:auto">
       <input type="checkbox" id="notify-toggle" onchange="toggleNotify()"> notify when an agent needs input
     </label>
-    <form id="newform" hidden onsubmit="createAgent(event)"
-          style="margin-top:.75rem; display:flex; gap:.5rem; flex-wrap:wrap; align-items:center">
-      <select id="n-type">
-        <option value="claude">claude</option>
-        <option value="codex">codex</option>
-        <option value="gemini">gemini</option>
-      </select>
-      <input id="n-ws" placeholder="workspace path" value="." style="flex:1; min-width:14rem">
-      <input id="n-model" placeholder="model (optional)">
-      <input id="n-prompt" placeholder="prompt" style="flex:2; min-width:18rem">
-      <label style="font-size:.85rem; color:var(--muted)"><input type="checkbox" id="n-isolate"> isolate</label>
-      <button type="submit" class="primary">Start</button>
-    </form>
   </div>
+
+  <dialog id="newmodal" class="modal" onclick="if(event.target===this)closeNew()">
+    <form onsubmit="createAgent(event)">
+      <div class="modal-head">
+        <h2>New agent</h2>
+        <button type="button" class="icon" onclick="closeNew()" title="Close">&times;</button>
+      </div>
+      <label class="field">
+        <span>Workspace path <em>*</em></span>
+        <input id="n-ws" placeholder="/path/to/repo" required autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Agent</span>
+        <select id="n-type">
+          <option value="claude">claude</option>
+          <option value="codex">codex</option>
+          <option value="gemini">gemini</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Prompt</span>
+        <textarea id="n-prompt" rows="3" placeholder="What should the agent do?"></textarea>
+      </label>
+      <details class="advanced">
+        <summary>Advanced</summary>
+        <label class="field">
+          <span>Model</span>
+          <input id="n-model" placeholder="optional — defaults to the agent's own">
+        </label>
+        <label class="check"><input type="checkbox" id="n-isolate"> Run in an isolated git worktree</label>
+      </details>
+      <div class="modal-actions">
+        <button type="button" onclick="closeNew()">Cancel</button>
+        <button type="submit" class="primary">Start agent</button>
+      </div>
+    </form>
+  </dialog>
   <div class="counts" id="counts"></div>
   <div class="card" style="overflow:hidden">
   <table>
@@ -155,7 +199,6 @@ pub const PAGE: &str = r#"<!doctype html>
       <button title="Copy full ID" onclick="copyId(selected)">⧉ copy id</button>
       <span class="status" id="d-status"></span>
       <span class="grow"></span>
-      <button onclick="loadDiff()">Diff</button>
       <button id="d-interrupt" onclick="act('interrupt')">Interrupt</button>
       <button id="d-stop" onclick="act('stop')">Stop</button>
       <button id="d-resume" class="primary" onclick="act('resume')" hidden>Resume</button>
@@ -164,6 +207,7 @@ pub const PAGE: &str = r#"<!doctype html>
     <div class="tabs">
       <button id="tab-logs" class="tab" onclick="showTab('logs')">Logs</button>
       <button id="tab-term" class="tab active" onclick="showTab('term')">Terminal</button>
+      <button id="tab-diff" class="tab" onclick="showTab('diff')">Diff</button>
     </div>
     <pre class="logs" id="d-logs" hidden>Loading…</pre>
     <div id="d-term"></div>
@@ -219,12 +263,15 @@ function notifyTransition(prev, agent) {
 
 function showTab(which) {
   activeTab = which;
-  const onTerm = which === "term";
-  document.getElementById("tab-logs").classList.toggle("active", !onTerm);
-  document.getElementById("tab-term").classList.toggle("active", onTerm);
-  document.getElementById("d-logs").hidden = onTerm;
-  document.getElementById("d-term").hidden = !onTerm;
-  if (onTerm) openTerminal(); else { closeTerminal(); refreshDetail(); }
+  document.getElementById("tab-logs").classList.toggle("active", which === "logs");
+  document.getElementById("tab-term").classList.toggle("active", which === "term");
+  document.getElementById("tab-diff").classList.toggle("active", which === "diff");
+  // The terminal has its own element; Logs and Diff share the <pre>.
+  document.getElementById("d-term").hidden = which !== "term";
+  document.getElementById("d-logs").hidden = which === "term";
+  if (which === "term") { openTerminal(); return; }
+  closeTerminal();
+  if (which === "diff") { lastDiff = null; loadDiff(); } else { refreshDetail(); }
 }
 
 // Terminal appearance — kept in one place so the measuring span used to fit the
@@ -434,6 +481,7 @@ function render(agents) {
 
 function select(id) {
   selected = id;
+  lastDiff = null;
   document.getElementById("detail").hidden = false;
   document.getElementById("d-id").textContent = id.slice(0, 10);
   document.getElementById("d-logs").textContent = "Loading…";
@@ -459,8 +507,9 @@ async function refreshDetail() {
   document.getElementById("d-resume").hidden = !terminal;
   document.getElementById("d-interrupt").hidden = terminal;
   document.getElementById("d-stop").hidden = terminal;
-  // Only the Logs tab pulls logs; on the terminal or the (one-shot) diff view,
-  // leave the pane alone — just keep the status above current.
+  // Keep the Diff tab current too (cheap: only re-renders on change).
+  if (activeTab === "diff") { loadDiff(); return; }
+  // Only the Logs tab pulls logs; the terminal manages itself.
   if (activeTab !== "logs") return;
   try {
     const res = await api("/agents/" + selected + "/logs");
@@ -486,25 +535,24 @@ function renderDiff(diff) {
   }).join("\n");
 }
 
+// Load the diff into the shared pane. Called on entering the Diff tab and on
+// each poll while it's open; only re-renders when the diff actually changed, so
+// the scroll position is preserved between unchanged refreshes.
+let lastDiff = null;
 async function loadDiff() {
   if (!selected) return;
-  // Diff is a one-shot view: switch the pane to it (away from the terminal) so
-  // it's actually visible, and mark the tab state so the poll won't overwrite it.
-  closeTerminal();
-  activeTab = "diff";
-  document.getElementById("tab-logs").classList.remove("active");
-  document.getElementById("tab-term").classList.remove("active");
-  document.getElementById("d-term").hidden = true;
   const pane = document.getElementById("d-logs");
-  pane.hidden = false;
-  pane.innerHTML = '<span class="spinner"></span> loading diff…';
+  if (lastDiff === null) pane.innerHTML = '<span class="spinner"></span> loading diff…';
   try {
     const res = await api("/agents/" + selected + "/diff");
     const body = await res.json();
-    if (!res.ok) { pane.textContent = body.error || "diff failed"; return; }
+    if (!res.ok) { pane.textContent = body.error || "diff failed"; lastDiff = null; return; }
     const diff = (body.diff || "").replace(/\s+$/, "");
-    pane.innerHTML = diff ? renderDiff(diff) : "(no changes)";
-  } catch (e) { pane.textContent = "diff failed"; }
+    if (diff !== lastDiff) {
+      lastDiff = diff;
+      pane.innerHTML = diff ? renderDiff(diff) : "(no changes)";
+    }
+  } catch (e) { if (lastDiff === null) pane.textContent = "diff failed"; }
 }
 
 async function sendReply() {
@@ -533,27 +581,34 @@ async function act(path) {
 }
 
 function toggleNew() {
-  const f = document.getElementById("newform");
-  f.hidden = !f.hidden;
+  const m = document.getElementById("newmodal");
+  if (typeof m.showModal === "function") m.showModal(); else m.setAttribute("open", "");
+  document.getElementById("n-ws").focus();
+}
+function closeNew() {
+  const m = document.getElementById("newmodal");
+  if (typeof m.close === "function") m.close(); else m.removeAttribute("open");
 }
 
 async function createAgent(ev) {
   ev.preventDefault();
+  const workspace = document.getElementById("n-ws").value.trim();
+  if (!workspace) return;   // required; native validation also guards this
   const body = {
     agent_type: document.getElementById("n-type").value,
-    workspace: document.getElementById("n-ws").value,
+    workspace,
     prompt: document.getElementById("n-prompt").value || null,
     isolate: document.getElementById("n-isolate").checked,
     auto_start: true,
   };
-  const model = document.getElementById("n-model").value;
+  const model = document.getElementById("n-model").value.trim();
   if (model) body.model = model;
   try {
     const res = await api("/agents", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (res.ok) { document.getElementById("newform").hidden = true; refresh(); }
+    if (res.ok) { ev.target.reset(); closeNew(); refresh(); }
     else { alert((await res.json()).error || "create failed"); }
   } catch (e) { alert("create failed"); }
 }
