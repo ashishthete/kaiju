@@ -7,10 +7,14 @@
 //! reliable source than scraping the TUI, whose layout and (user-configured)
 //! status line vary.
 
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
+
+/// Seconds of slack: a transcript's first event lands a moment after the daemon
+/// records the agent as started, and a small clock skew is possible.
+const START_SLACK_SECS: i64 = 15;
 
 /// Exact token usage aggregated across a session's assistant messages.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -105,33 +109,48 @@ fn projects_root() -> Option<PathBuf> {
 }
 
 /// Newest transcript file for `run_dir`, last modified at or after `since_unix`
-/// (with a few seconds of slack for the gap between agent start and first write).
-/// `None` if the project directory or a matching transcript doesn't exist.
+/// Unix timestamp of a transcript's first dated event (when its session began).
+/// Reads only the first lines, so it's cheap even on a huge transcript.
+fn session_start_unix(path: &Path) -> Option<i64> {
+    let reader = BufReader::new(std::fs::File::open(path).ok()?);
+    for line in reader.lines().take(50).map_while(Result::ok) {
+        if let Ok(value) = serde_json::from_str::<Value>(&line) {
+            if let Some(ts) = value.get("timestamp").and_then(Value::as_str) {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
+                    return Some(dt.timestamp());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Find the transcript for *this* agent's session. Several Claude sessions can
+/// share a working directory (the operator's own + each agent's), so newest-
+/// modified is wrong — it cross-attributes usage. Instead match by start time:
+/// among sessions that began at/after the agent started, take the earliest (the
+/// one that began when the agent launched). `None` if none matches yet.
 fn find_transcript(run_dir: &Path, since_unix: i64) -> Option<PathBuf> {
     let dir = projects_root()?.join(project_slug(run_dir));
-    let mut best: Option<(SystemTime, PathBuf)> = None;
+    let mut best: Option<(i64, PathBuf)> = None;
 
     for entry in std::fs::read_dir(dir).ok()?.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
             continue;
         }
-        let Ok(modified) = entry.metadata().and_then(|m| m.modified()) else {
+        let Some(start) = session_start_unix(&path) else {
             continue;
         };
-        let mtime_unix = modified
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-        if mtime_unix + 5 < since_unix {
-            continue; // predates this agent's run
+        if start < since_unix - START_SLACK_SECS {
+            continue; // began before this agent — a different (e.g. operator) session
         }
-        let is_newer = match &best {
-            Some((seen, _)) => modified > *seen,
+        let is_earlier = match &best {
+            Some((seen, _)) => start < *seen,
             None => true,
         };
-        if is_newer {
-            best = Some((modified, path));
+        if is_earlier {
+            best = Some((start, path));
         }
     }
 

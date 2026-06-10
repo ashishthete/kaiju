@@ -833,6 +833,7 @@ dependencies = [
 name = "kaiju-adapters"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "kaiju-core",
  "regex",
  "serde",
