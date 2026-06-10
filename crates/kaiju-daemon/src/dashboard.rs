@@ -161,6 +161,19 @@ pub const PAGE: &str = r#"<!doctype html>
   .check { display: flex; align-items: center; gap: .45rem; font-size: .85rem; color: var(--muted); }
   .modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .3rem; }
   .icon { padding: .15rem .5rem; font-size: 1.1rem; line-height: 1; }
+
+  .popover { position: fixed; inset: auto; top: 4.6rem; right: 1.75rem; margin: 0;
+             background: var(--surface); color: var(--text); border: 1px solid var(--border);
+             border-radius: var(--radius); box-shadow: var(--shadow); padding: .9rem 1rem;
+             min-width: 17rem; max-width: 24rem; }
+  .popover:not(:popover-open) { display: none; }
+  .pop-title { font-weight: 600; font-size: .9rem; margin-bottom: .7rem; }
+  .popover .check { margin-bottom: .7rem; }
+  .pop-status { font-size: .78rem; color: var(--muted); margin-top: .6rem; min-height: 1rem; }
+  .pop-hint { font-size: .75rem; color: var(--muted); margin-top: .6rem; line-height: 1.4;
+              border-top: 1px solid var(--border); padding-top: .6rem; }
+  .pop-hint code { font-family: ui-monospace, monospace; background: var(--surface-2);
+                   padding: .05rem .3rem; border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -168,9 +181,19 @@ pub const PAGE: &str = r#"<!doctype html>
   <div class="sub">Live fleet &middot; refreshing every 2s &middot; <span id="updated"></span></div>
   <div class="card toolbar" style="margin-bottom:1.25rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap">
     <button class="primary" onclick="toggleNew()">+ New agent</button>
-    <label style="font-size:.85rem; color:var(--muted); margin-left:auto">
-      <input type="checkbox" id="notify-toggle" onchange="toggleNotify()"> notify when an agent needs input
+    <button class="icon" id="settings-btn" popovertarget="settings-pop" style="margin-left:auto"
+            title="Settings" aria-label="Settings">⚙</button>
+  </div>
+
+  <div id="settings-pop" popover class="popover" aria-label="Settings">
+    <div class="pop-title">Settings</div>
+    <label class="check">
+      <input type="checkbox" id="notify-toggle" onchange="toggleNotify()">
+      Notify when an agent needs input
     </label>
+    <button onclick="testNotify()">Send test notification</button>
+    <div class="pop-status" id="settings-status" aria-live="polite"></div>
+    <div class="pop-hint">Per-browser, and needs this tab open. For alerts without the browser, run the daemon with <code>KAIJU_DESKTOP_NOTIFY=1</code>.</div>
   </div>
 
   <dialog id="newmodal" class="modal" onclick="if(event.target===this)closeNew()">

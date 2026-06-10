@@ -17,6 +17,36 @@ function initNotify() {
   }
 }
 
+function settingsStatus(msg) {
+  const el = document.getElementById("settings-status");
+  if (el) el.textContent = msg; else note(msg);
+}
+
+// Verify the browser desktop-notification path and report exactly what's wrong.
+function testNotify() {
+  if (!("Notification" in window)) {
+    settingsStatus("this browser has no Notification API");
+    return;
+  }
+  const fire = () => {
+    try {
+      const n = new Notification("Kaiju · test", { body: "desktop notification works ✔" });
+      n.onclick = () => window.focus();
+      settingsStatus("test sent — if you saw nothing, check macOS Settings → Notifications → your browser (and turn off Focus/DND)");
+    } catch (e) {
+      settingsStatus("notification blocked by the OS: " + e.message);
+    }
+  };
+  if (Notification.permission === "granted") fire();
+  else if (Notification.permission === "denied")
+    settingsStatus("notifications are blocked for this site — re-enable via the address-bar site settings, then retry");
+  else
+    Notification.requestPermission().then((p) => {
+      if (p === "granted") fire();
+      else settingsStatus("notification permission: " + p);
+    });
+}
+
 function toggleNotify() {
   notifyOn = document.getElementById("notify-toggle").checked;
   localStorage.setItem("kaiju_notify", notifyOn ? "1" : "0");
