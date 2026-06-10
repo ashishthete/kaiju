@@ -233,7 +233,14 @@ pub const PAGE: &str = r#"<!doctype html>
       </select>
     </label>
     <label class="pfield"><span>Default model</span>
-      <input id="pref-model" placeholder="e.g. claude-opus-4-8"></label>
+      <input id="pref-model" list="model-options" placeholder="e.g. claude-opus-4-8"></label>
+    <datalist id="model-options">
+      <option value="claude-opus-4-8"></option>
+      <option value="claude-opus-4-7"></option>
+      <option value="claude-opus-4-6"></option>
+      <option value="claude-sonnet-4-6"></option>
+      <option value="claude-haiku-4-5"></option>
+    </datalist>
     <label class="pfield"><span>Default args</span>
       <input id="pref-args" placeholder="--permission-mode acceptEdits"></label>
     <label class="check"><input type="checkbox" id="pref-isolate"> Isolate new agents in a git worktree</label>
