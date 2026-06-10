@@ -29,8 +29,10 @@ async function loadPrefs() {
     const res = await api("/settings");
     if (!res.ok) return;
     const s = await res.json();
-    document.getElementById("pref-type").value = s.default_agent_type || "";
-    document.getElementById("pref-model").value = s.default_model || "";
+    // Show the built-in defaults when nothing is configured yet — the user can
+    // still change or clear them.
+    document.getElementById("pref-type").value = s.default_agent_type || "claude";
+    document.getElementById("pref-model").value = s.default_model || "claude-opus-4-8";
     document.getElementById("pref-args").value = (s.default_extra_args || []).join(" ");
     document.getElementById("pref-isolate").checked = !!s.isolate;
     document.getElementById("pref-maxtok").value = s.max_tokens != null ? s.max_tokens : "";
