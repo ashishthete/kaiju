@@ -377,9 +377,17 @@ async fn get_logs(State(state): State<AppState>, Path(id): Path<String>) -> impl
         None => return Err(err(StatusCode::NOT_FOUND, "agent not found")),
     };
 
-    match crate::tmux::TmuxManager::capture_pane(&agent.session_name, 200) {
-        Ok(output) => Ok(Json(serde_json::json!({ "logs": output }))),
-        Err(e) => Err(err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
+    // Live capture while the session is up; otherwise the last persisted output
+    // (the session ended, so its pane is gone).
+    if let Ok(output) = crate::tmux::TmuxManager::capture_pane(&agent.session_name, 200) {
+        return Ok(Json(serde_json::json!({ "logs": output })));
+    }
+    match crate::logstore::load(&id) {
+        Some(logs) => Ok(Json(serde_json::json!({ "logs": logs }))),
+        None => Err(err(
+            StatusCode::NOT_FOUND,
+            "no logs — session ended and nothing was captured",
+        )),
     }
 }
 
@@ -422,6 +430,7 @@ async fn delete_agent(State(state): State<AppState>, Path(id): Path<String>) -> 
                 tracing::warn!("failed to clean up worktree for agent {id}: {e}");
             }
         }
+        crate::logstore::remove(&id);
     }
 
     match state.store.remove(&id) {

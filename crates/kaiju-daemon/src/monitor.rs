@@ -145,6 +145,11 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
 
         // Track output changes to measure idle time.
         let fp = fingerprint(&output);
+        // Mirror the latest capture to disk (on first sight and whenever it
+        // changes) so logs survive the session ending.
+        if activity.get(&agent.id).map(|r| r.fingerprint) != Some(fp) {
+            crate::logstore::save(&agent.id, &output);
+        }
         let record = activity.entry(agent.id.clone()).or_insert(OutputActivity {
             fingerprint: fp,
             since: now,

@@ -123,6 +123,7 @@ need `KAIJU_URL` and, if auth is on, `KAIJU_TOKEN`).
 | `KAIJU_CLAUDE_BIN` / `KAIJU_CODEX_BIN` / `KAIJU_GEMINI_BIN` | Override an agent's executable (pin a version / use a stub) | found on `PATH` |
 | `KAIJU_PRICING` | Token pricing file for cost estimates | `~/.kaiju/pricing.json` |
 | `KAIJU_CONFIG` | Global defaults applied to new agents | `~/.kaiju/config.json` |
+| `KAIJU_LOGS` | Dir for persisted per-agent logs | `~/.kaiju/logs` |
 | `KAIJU_URL` | (client) Daemon URL | `http://127.0.0.1:7800` |
 
 **Metrics & cost:** token counts come from Claude Code's own session transcript
