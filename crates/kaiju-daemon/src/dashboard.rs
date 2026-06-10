@@ -179,7 +179,6 @@ pub const PAGE: &str = r#"<!doctype html>
   .popover:not(:popover-open) { display: none; }
   .pop-title { font-weight: 600; font-size: .9rem; margin-bottom: .7rem; }
   .popover .check { margin-bottom: .7rem; }
-  .pop-status { font-size: .78rem; color: var(--muted); margin-top: .6rem; min-height: 1rem; }
   .pop-hint { font-size: .75rem; color: var(--muted); margin-top: .6rem; line-height: 1.4;
               border-top: 1px solid var(--border); padding-top: .6rem; }
   .pop-hint code { font-family: ui-monospace, monospace; background: var(--surface-2);
@@ -213,9 +212,7 @@ pub const PAGE: &str = r#"<!doctype html>
       <input type="checkbox" id="notify-toggle" onchange="toggleNotify()">
       Notify when an agent needs input
     </label>
-    <button onclick="testNotify()">Send test notification</button>
-    <div class="pop-status" id="settings-status" aria-live="polite"></div>
-    <div class="pop-hint">Per-browser, and needs this tab open. For alerts without the browser, run the daemon with <code>KAIJU_DESKTOP_NOTIFY=1</code>.</div>
+    <div class="pop-hint">Per-browser, and needs this tab open (and macOS Focus/Do&nbsp;Not&nbsp;Disturb off). For alerts without the browser, run the daemon with <code>KAIJU_DESKTOP_NOTIFY=1</code>.</div>
   </div>
 
   <dialog id="newmodal" class="modal" onclick="if(event.target===this)closeNew()">
