@@ -150,9 +150,14 @@ to each agent's own args. All keys are optional; restart to pick up edits.
   "default_agent_type": "claude",
   "default_model": "claude-opus-4-8",
   "default_extra_args": ["--permission-mode", "acceptEdits"],
-  "isolate": true
+  "isolate": true,
+  "max_tokens": 2000000,
+  "max_cost_usd": 10.0
 }
 ```
+
+`max_tokens` / `max_cost_usd` are optional **budget caps**: the monitor stops an
+agent once it reaches either (cost requires pricing to be configured).
 
 **Auth:** set `KAIJU_TOKEN` before exposing the daemon beyond localhost. Clients
 then send `Authorization: Bearer <token>` (the CLI reads `KAIJU_TOKEN`; the

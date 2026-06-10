@@ -134,7 +134,14 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
         }
 
         let metrics = updated_metrics(agent.started_at, &agent.metrics, &parsed, now);
-        state.store.update_metrics(&agent.id, metrics);
+        state.store.update_metrics(&agent.id, metrics.clone());
+
+        // Enforce a configured token/cost budget: stop the agent once it's hit.
+        if let Some(reason) = state.settings.budget_exceeded(&metrics) {
+            tracing::info!("stopping agent {} — {reason}", agent.id);
+            let _ = crate::server::stop_agent_internal(state, &agent.id);
+            continue;
+        }
 
         // Track output changes to measure idle time.
         let fp = fingerprint(&output);

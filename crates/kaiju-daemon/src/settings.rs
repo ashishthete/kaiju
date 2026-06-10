@@ -18,7 +18,7 @@
 
 use std::path::PathBuf;
 
-use kaiju_core::agent::AgentConfig;
+use kaiju_core::agent::{AgentConfig, AgentMetrics};
 use serde::Deserialize;
 
 /// Daemon-wide defaults for new agents.
@@ -36,6 +36,13 @@ pub struct Settings {
     /// Run agents in an isolated git worktree by default.
     #[serde(default)]
     pub isolate: bool,
+    /// Auto-stop an agent once its tokens-used reaches this many.
+    #[serde(default)]
+    pub max_tokens: Option<u64>,
+    /// Auto-stop an agent once its estimated cost reaches this many USD
+    /// (requires pricing — [`crate::settings`] / `~/.kaiju/pricing.json`).
+    #[serde(default)]
+    pub max_cost_usd: Option<f64>,
 }
 
 impl Settings {
@@ -52,6 +59,23 @@ impl Settings {
             config.extra_args = args;
         }
         config
+    }
+
+    /// If a configured budget is reached, return a human-readable reason the
+    /// agent should be stopped; otherwise `None`. A threshold that isn't set, or
+    /// a metric that isn't known yet, never triggers.
+    pub fn budget_exceeded(&self, metrics: &AgentMetrics) -> Option<String> {
+        if let (Some(max), Some(used)) = (self.max_tokens, metrics.tokens_used) {
+            if used >= max {
+                return Some(format!("token budget reached ({used} >= {max})"));
+            }
+        }
+        if let (Some(max), Some(cost)) = (self.max_cost_usd, metrics.estimated_cost_usd) {
+            if cost >= max {
+                return Some(format!("cost budget reached (${cost:.2} >= ${max:.2})"));
+            }
+        }
+        None
     }
 }
 
@@ -123,5 +147,48 @@ mod tests {
         let out = s.apply(config(Some("m"), &["--x"]));
         assert_eq!(out.model.as_deref(), Some("m"));
         assert_eq!(out.extra_args, vec!["--x"]);
+    }
+
+    fn metrics(tokens: Option<u64>, cost: Option<f64>) -> AgentMetrics {
+        AgentMetrics {
+            runtime_secs: 0,
+            tokens_used: tokens,
+            estimated_cost_usd: cost,
+        }
+    }
+
+    #[test]
+    fn budget_triggers_at_or_above_token_threshold() {
+        let s = Settings {
+            max_tokens: Some(1000),
+            ..Settings::default()
+        };
+        assert!(s.budget_exceeded(&metrics(Some(1000), None)).is_some());
+        assert!(s.budget_exceeded(&metrics(Some(1500), None)).is_some());
+        assert!(s.budget_exceeded(&metrics(Some(999), None)).is_none());
+    }
+
+    #[test]
+    fn budget_triggers_on_cost_threshold() {
+        let s = Settings {
+            max_cost_usd: Some(5.0),
+            ..Settings::default()
+        };
+        assert!(s.budget_exceeded(&metrics(None, Some(5.0))).is_some());
+        assert!(s.budget_exceeded(&metrics(None, Some(4.99))).is_none());
+    }
+
+    #[test]
+    fn no_budget_or_unknown_metric_never_triggers() {
+        // No thresholds set.
+        assert!(Settings::default()
+            .budget_exceeded(&metrics(Some(10_000_000), Some(999.0)))
+            .is_none());
+        // Threshold set but the metric isn't known yet.
+        let s = Settings {
+            max_tokens: Some(10),
+            ..Settings::default()
+        };
+        assert!(s.budget_exceeded(&metrics(None, None)).is_none());
     }
 }
