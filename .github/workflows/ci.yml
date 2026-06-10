@@ -21,4 +21,4 @@ jobs:
       - name: Test
         run: cargo test --workspace
       - name: Dashboard JS tests
-        run: node --test crates/kaiju-daemon/assets/
+        run: node --test crates/kaiju-daemon/assets/*.test.js
