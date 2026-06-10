@@ -251,23 +251,30 @@ async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> impl IntoResponse {
-    if req.agent_type.trim().is_empty() {
+    // Fall back to the configured default agent type when none is given.
+    let type_str = if req.agent_type.trim().is_empty() {
+        state.settings.default_agent_type.clone().unwrap_or_default()
+    } else {
+        req.agent_type.clone()
+    };
+    if type_str.trim().is_empty() {
         return Err(err(StatusCode::BAD_REQUEST, "agent type must not be empty"));
     }
     // parse() is infallible: builtins map to their adapter, any other non-blank
     // string becomes a custom CLI (the type name is the executable).
-    let agent_type: AgentType = req.agent_type.parse().expect("infallible");
+    let agent_type: AgentType = type_str.parse().expect("infallible");
 
-    let config = AgentConfig {
+    // Apply global defaults (model, extra args) for fields the request omits.
+    let config = state.settings.apply(AgentConfig {
         agent_type,
         model: req.model,
         workspace: PathBuf::from(&req.workspace),
         prompt: req.prompt,
         extra_args: req.extra_args,
-    };
+    });
 
     let mut agent = kaiju_core::agent::Agent::new(config);
-    agent.isolate = req.isolate;
+    agent.isolate = req.isolate || state.settings.isolate;
     agent.batch = req.batch;
     let id = agent.id.clone();
     state.store.insert(agent);

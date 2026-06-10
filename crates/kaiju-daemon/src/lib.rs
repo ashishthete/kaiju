@@ -15,6 +15,7 @@ pub mod persist;
 pub mod reconcile;
 pub mod scheduler;
 pub mod server;
+pub mod settings;
 pub mod store;
 pub mod task_store;
 pub mod terminal;

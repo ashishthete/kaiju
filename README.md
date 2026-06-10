@@ -122,6 +122,7 @@ need `KAIJU_URL` and, if auth is on, `KAIJU_TOKEN`).
 | `KAIJU_SLACK_WEBHOOK` | Also post "needs you" alerts to Slack | — |
 | `KAIJU_CLAUDE_BIN` / `KAIJU_CODEX_BIN` / `KAIJU_GEMINI_BIN` | Override an agent's executable (pin a version / use a stub) | found on `PATH` |
 | `KAIJU_PRICING` | Token pricing file for cost estimates | `~/.kaiju/pricing.json` |
+| `KAIJU_CONFIG` | Global defaults applied to new agents | `~/.kaiju/config.json` |
 | `KAIJU_URL` | (client) Daemon URL | `http://127.0.0.1:7800` |
 
 **Metrics & cost:** token counts come from Claude Code's own session transcript
@@ -138,6 +139,20 @@ rates (cost is blank for any model not listed; restart to pick up edits):
 ```
 
 > The rates above are **placeholders** — fill in the current published prices.
+
+**Global defaults:** to avoid repeating the same model / flags / isolation on
+every spawn, create `~/.kaiju/config.json` (override with `KAIJU_CONFIG`). Its
+values fill in fields a request leaves unset; `default_extra_args` are prepended
+to each agent's own args. All keys are optional; restart to pick up edits.
+
+```json
+{
+  "default_agent_type": "claude",
+  "default_model": "claude-opus-4-8",
+  "default_extra_args": ["--permission-mode", "acceptEdits"],
+  "isolate": true
+}
+```
 
 **Auth:** set `KAIJU_TOKEN` before exposing the daemon beyond localhost. Clients
 then send `Authorization: Bearer <token>` (the CLI reads `KAIJU_TOKEN`; the
