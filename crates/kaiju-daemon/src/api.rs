@@ -18,6 +18,7 @@ pub fn routes() -> Router<AppState> {
         .route("/agents", get(list_agents).post(create_agent))
         .route("/agents/:id", get(get_agent).delete(delete_agent))
         .route("/agents/:id/start", post(start_agent))
+        .route("/agents/:id/resume", post(resume_agent))
         .route("/agents/:id/stop", post(stop_agent))
         .route("/agents/:id/logs", get(get_logs))
         .route("/agents/:id/diff", get(get_diff))
@@ -288,6 +289,25 @@ async fn start_agent(State(state): State<AppState>, Path(id): Path<String>) -> i
             Ok(Json(AgentResponse::from(&agent)))
         }
         Err(e) => Err(err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
+    }
+}
+
+async fn resume_agent(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    use kaiju_core::NexusError;
+    match crate::server::resume_agent_internal(&state, &id) {
+        Ok(()) => {
+            let agent = state.store.get(&id).unwrap();
+            Ok(Json(AgentResponse::from(&agent)))
+        }
+        Err(e) => {
+            let code = match e {
+                NexusError::AgentNotFound(_) => StatusCode::NOT_FOUND,
+                NexusError::AlreadyRunning(_) => StatusCode::CONFLICT,
+                NexusError::Adapter(_) | NexusError::Git(_) => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            Err(err(code, &e.to_string()))
+        }
     }
 }
 

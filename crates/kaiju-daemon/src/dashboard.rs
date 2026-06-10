@@ -147,8 +147,9 @@ pub const PAGE: &str = r#"<!doctype html>
       <span class="status" id="d-status"></span>
       <span class="grow"></span>
       <button onclick="loadDiff()">Diff</button>
-      <button onclick="act('interrupt')">Interrupt</button>
-      <button onclick="act('stop')">Stop</button>
+      <button id="d-interrupt" onclick="act('interrupt')">Interrupt</button>
+      <button id="d-stop" onclick="act('stop')">Stop</button>
+      <button id="d-resume" class="primary" onclick="act('resume')" hidden>Resume</button>
       <button onclick="closeDetail()">Close</button>
     </div>
     <div class="tabs">
@@ -419,6 +420,11 @@ async function refreshDetail() {
   const badge = document.getElementById("d-status");
   badge.textContent = st || "?";
   badge.className = "status s-" + (st || "");
+  // Offer Resume on a finished agent; Interrupt/Stop only while it's active.
+  const terminal = ["stopped", "completed", "error"].includes(st);
+  document.getElementById("d-resume").hidden = !terminal;
+  document.getElementById("d-interrupt").hidden = terminal;
+  document.getElementById("d-stop").hidden = terminal;
   // Logs are hidden while the terminal is open — skip fetching them, but the
   // status above is already up to date.
   if (activeTab === "term") return;

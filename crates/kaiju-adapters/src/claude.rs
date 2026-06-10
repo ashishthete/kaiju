@@ -111,6 +111,20 @@ impl Adapter for ClaudeAdapter {
         Some(cmd)
     }
 
+    fn resume_command(&self, config: &AgentConfig) -> Option<String> {
+        // `--continue` reopens the most recent conversation in the working dir.
+        // No prompt is seeded — the operator drives the resumed TUI directly.
+        let bin = crate::binary::agent_binary("KAIJU_CLAUDE_BIN", "claude");
+        let mut cmd = format!("cd {} && {bin} --continue", config.workspace.display());
+        if let Some(model) = config.model.as_deref().or(self.default_model()) {
+            cmd.push_str(&format!(" --model {model}"));
+        }
+        for arg in &config.extra_args {
+            cmd.push_str(&format!(" {arg}"));
+        }
+        Some(cmd)
+    }
+
     fn read_metrics(&self, run_dir: &std::path::Path, since_unix: i64) -> Option<ParsedOutput> {
         let usage = crate::claude_transcript::read_usage(run_dir, since_unix)?;
         Some(ParsedOutput {

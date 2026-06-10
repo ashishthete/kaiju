@@ -261,6 +261,24 @@ impl NexusClient {
         Ok(())
     }
 
+    pub async fn resume(&self, id: &str) -> Result<()> {
+        let resp = self
+            .http
+            .post(format!("{}/agents/{id}/resume", self.base_url))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await?;
+            return Err(err.error.into());
+        }
+
+        let agent: AgentResponse = resp.json().await?;
+        println!("Agent {} resumed.", agent.id);
+
+        Ok(())
+    }
+
     pub async fn send(&self, id: &str, message: &str) -> Result<()> {
         let resp = self
             .http

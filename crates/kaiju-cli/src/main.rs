@@ -81,6 +81,12 @@ enum Commands {
         id: String,
     },
 
+    /// Resume a stopped or finished agent (continues its conversation)
+    Resume {
+        /// Agent ID
+        id: String,
+    },
+
     /// Send a follow-up message or approval to a running agent
     Send {
         /// Agent ID
@@ -168,6 +174,7 @@ async fn main() {
         Commands::Logs { id } => client.logs(&id).await,
         Commands::Diff { id } => client.diff(&id).await,
         Commands::Stop { id } => client.stop(&id).await,
+        Commands::Resume { id } => client.resume(&id).await,
         Commands::Send { id, message } => client.send(&id, &message).await,
         Commands::Interrupt { id } => client.interrupt(&id).await,
         Commands::Remove { id } => client.remove(&id).await,

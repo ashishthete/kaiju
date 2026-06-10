@@ -276,6 +276,63 @@ fn prepare_run_dir(state: &AppState, agent: &kaiju_core::agent::Agent) -> Result
     Ok(path)
 }
 
+/// Internal helper: resume a previously-ended agent in its original directory,
+/// reusing its CLI's resume mode (e.g. `claude --continue`).
+///
+/// Unlike start, it never creates a worktree — an isolated agent resumes in the
+/// worktree it already has, and fails if that has been swept.
+pub fn resume_agent_internal(state: &AppState, id: &str) -> Result<()> {
+    let agent = state
+        .store
+        .get(id)
+        .ok_or_else(|| NexusError::AgentNotFound(id.to_string()))?;
+
+    if agent.status.is_active() {
+        return Err(NexusError::AlreadyRunning(id.to_string()));
+    }
+
+    let adapter = state
+        .adapters
+        .get(&agent.agent_type)
+        .ok_or_else(|| NexusError::Adapter(format!("no adapter for {}", agent.agent_type)))?;
+
+    let run_dir = if agent.isolate {
+        match &agent.worktree_path {
+            Some(path) if path.exists() => path.clone(),
+            _ => {
+                return Err(NexusError::Git(format!(
+                    "cannot resume {id}: its worktree no longer exists"
+                )))
+            }
+        }
+    } else {
+        agent.workspace.clone()
+    };
+
+    let config = kaiju_core::agent::AgentConfig {
+        agent_type: agent.agent_type.clone(),
+        model: agent.model.clone(),
+        workspace: run_dir.clone(),
+        prompt: agent.prompt.clone(),
+        extra_args: agent.extra_args.clone(),
+    };
+
+    let command = adapter.resume_command(&config).ok_or_else(|| {
+        NexusError::Adapter(format!("{} does not support resume", agent.agent_type))
+    })?;
+
+    // Clear any lingering session for this name before recreating it.
+    if TmuxManager::session_exists(&agent.session_name) {
+        TmuxManager::kill_session(&agent.session_name)?;
+    }
+
+    TmuxManager::create_session(&agent.session_name, &run_dir.display().to_string(), &command)?;
+    state.store.mark_started(id, chrono::Utc::now());
+    state.store.update_status(id, AgentStatus::Running);
+
+    Ok(())
+}
+
 /// Internal helper: stop an agent by killing its tmux session.
 pub fn stop_agent_internal(state: &AppState, id: &str) -> Result<()> {
     let agent = state

@@ -177,6 +177,15 @@ pub trait Adapter: Send + Sync {
         None
     }
 
+    /// Build the shell command to *resume* a previously-ended session in the
+    /// same working directory (e.g. `claude --continue`), so a stopped or
+    /// finished agent can be picked back up with its conversation intact.
+    ///
+    /// Default: the CLI has no resume mode (returns `None`).
+    fn resume_command(&self, _config: &AgentConfig) -> Option<String> {
+        None
+    }
+
     /// Read precise token/cost metrics for a running session from the CLI's own
     /// transcript or log, given where it runs (`run_dir`) and when it started
     /// (`since_unix`, Unix seconds). This is authoritative — preferred over the
