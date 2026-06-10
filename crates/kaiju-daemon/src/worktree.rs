@@ -82,23 +82,48 @@ impl WorktreeManager {
 
     /// Show the working-tree changes in `dir` (the agent's run directory).
     ///
-    /// Captures what the agent has changed so far. Works on any git directory —
-    /// an isolated worktree or the plain workspace.
+    /// Diffs against `HEAD` so it captures **both staged and unstaged** edits to
+    /// tracked files (plain `git diff` misses staged ones), falling back to a
+    /// bare diff in a repo with no commits yet. Untracked files — which no diff
+    /// shows — are appended as a short list so new files aren't invisible. Works
+    /// on any git directory: an isolated worktree or the plain workspace.
     pub fn diff(dir: &Path) -> Result<String> {
-        let output = Command::new("git")
-            .args(["-C", &dir.display().to_string(), "--no-pager", "diff"])
-            .output()?;
+        let dir_str = dir.display().to_string();
+        let git = |args: &[&str]| -> Result<std::process::Output> {
+            let mut full = vec!["-C", &dir_str];
+            full.extend_from_slice(args);
+            Command::new("git").args(&full).output().map_err(NexusError::Io)
+        };
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(NexusError::Git(format!(
-                "failed to diff '{}': {}",
-                dir.display(),
-                stderr.trim()
-            )));
+        // HEAD-relative diff (staged + unstaged); fall back when there's no HEAD.
+        let tracked = git(&["--no-pager", "diff", "HEAD"])?;
+        let mut out = if tracked.status.success() {
+            String::from_utf8_lossy(&tracked.stdout).to_string()
+        } else {
+            let bare = git(&["--no-pager", "diff"])?;
+            if !bare.status.success() {
+                let stderr = String::from_utf8_lossy(&bare.stderr);
+                return Err(NexusError::Git(format!(
+                    "failed to diff '{dir_str}': {}",
+                    stderr.trim()
+                )));
+            }
+            String::from_utf8_lossy(&bare.stdout).to_string()
+        };
+
+        if let Ok(untracked) = git(&["ls-files", "--others", "--exclude-standard"]) {
+            let names = String::from_utf8_lossy(&untracked.stdout);
+            if !names.trim().is_empty() {
+                out.push_str("\n# untracked files:\n");
+                for name in names.lines() {
+                    out.push_str("?? ");
+                    out.push_str(name);
+                    out.push('\n');
+                }
+            }
         }
 
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        Ok(out)
     }
 
     /// Remove a worktree. `--force` so a dirty checkout is still cleaned up.

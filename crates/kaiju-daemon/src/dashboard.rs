@@ -89,6 +89,15 @@ pub const PAGE: &str = r#"<!doctype html>
 
   pre.logs { background: var(--term-bg); color: #c9d1d9; padding: .85rem; border-radius: 8px;
              max-height: 60vh; overflow: auto; font-size: .82rem; white-space: pre-wrap; word-break: break-word; }
+  pre.logs .d-add { color: #3fb950; }
+  pre.logs .d-del { color: #f85149; }
+  pre.logs .d-hunk { color: #39c5cf; }
+  pre.logs .d-file { color: #d2a8ff; font-weight: 600; }
+
+  .spinner { display: inline-block; width: .8em; height: .8em; vertical-align: -2px;
+             border: 2px solid var(--border); border-top-color: var(--accent);
+             border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .reply { display: flex; gap: .5rem; margin-top: .85rem; }
   .reply input { flex: 1; }
   .note { color: var(--muted); font-size: .8rem; margin-top: .45rem; min-height: 1rem; }
@@ -234,18 +243,41 @@ const TERM_THEME = {
 
 // Measure one monospace cell as xterm will draw it, then derive how many
 // cols/rows fit the panel. Avoids depending on xterm internals or a fit addon.
-function fitTermSize(host) {
+// Cell size in CSS px. Prefer xterm's *actual* rendered cell (so rows/cols match
+// exactly and nothing is clipped); before the terminal exists, fall back to a
+// measured estimate rounded UP — a slightly small grid leaves a thin margin,
+// never a clipped bottom row.
+function cellSize() {
+  try {
+    const c = term._core._renderService.dimensions.css.cell;
+    if (c && c.width && c.height) return { w: c.width, h: c.height };
+  } catch (e) { /* not rendered yet — estimate below */ }
   const span = document.createElement("span");
   span.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font-family:" +
     TERM_FONT + ";font-size:" + TERM_FONT_SIZE + "px;letter-spacing:" + TERM_LETTER + "px;";
   span.textContent = "0".repeat(100);
   document.body.appendChild(span);
-  const cellW = span.getBoundingClientRect().width / 100;
+  const w = span.getBoundingClientRect().width / 100;
   document.body.removeChild(span);
-  const cellH = TERM_FONT_SIZE * TERM_LINE_HEIGHT;
-  const cols = Math.max(20, Math.floor((host.clientWidth - TERM_PAD * 2) / cellW));
-  const rows = Math.max(6, Math.floor((host.clientHeight - TERM_PAD * 2) / cellH));
-  return { cols, rows };
+  return { w: Math.ceil(w), h: Math.ceil(TERM_FONT_SIZE * TERM_LINE_HEIGHT) };
+}
+
+function fitDims(host) {
+  const { w, h } = cellSize();
+  return {
+    cols: Math.max(20, Math.floor((host.clientWidth - TERM_PAD * 2) / w)),
+    rows: Math.max(6, Math.floor((host.clientHeight - TERM_PAD * 2) / h)),
+  };
+}
+
+// Resize xterm (and the tmux pane) to fit the panel using the real cell size.
+function reFit() {
+  if (!term) return;
+  const d = fitDims(document.getElementById("d-term"));
+  if (d.cols !== term.cols || d.rows !== term.rows) {
+    try { term.resize(d.cols, d.rows); } catch (e) {}
+    syncBackendSize(d.cols, d.rows);
+  }
 }
 
 // Resize the tmux pane to match the browser viewport so the capture fills the
@@ -262,7 +294,7 @@ async function openTerminal() {
   closeTerminal();
   if (!selected || !window.Terminal) return;
   const host = document.getElementById("d-term");
-  const { cols, rows } = fitTermSize(host);
+  const { cols, rows } = fitDims(host);   // estimate (terminal not created yet)
   await syncBackendSize(cols, rows);
   // convertEol: tmux `capture-pane` separates rows with a bare LF (no CR), so
   // each line must return to column 0 — without this every partial line starts
@@ -275,6 +307,10 @@ async function openTerminal() {
                         rightClickSelectsWord: true, macOptionClickForcesSelection: true,
                         theme: TERM_THEME });
   term.open(host);
+  // Now that xterm has rendered, re-fit to its real cell size so the bottom rows
+  // aren't clipped (a deferred pass catches late layout).
+  reFit();
+  setTimeout(reFit, 60);
 
   // The pane is a full repaint every tick, which would wipe a text selection and
   // yank the view to the bottom. So hold incoming frames while the user is busy —
@@ -320,12 +356,7 @@ let termResizeTimer = null;
 window.addEventListener("resize", () => {
   if (!term || activeTab !== "term") return;
   clearTimeout(termResizeTimer);
-  termResizeTimer = setTimeout(() => {
-    if (!term) return;
-    const { cols, rows } = fitTermSize(document.getElementById("d-term"));
-    try { term.resize(cols, rows); } catch (e) {}
-    syncBackendSize(cols, rows);
-  }, 200);
+  termResizeTimer = setTimeout(reFit, 200);
 });
 
 function closeTerminal() {
@@ -355,6 +386,9 @@ function fmtDuration(s) {
 }
 function esc(s) { return (s || "").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function note(msg) { document.getElementById("d-note").textContent = msg; }
+function noteBusy(msg) {
+  document.getElementById("d-note").innerHTML = '<span class="spinner"></span> ' + esc(msg);
+}
 
 function render(agents) {
   document.getElementById("empty").hidden = agents.length > 0;
@@ -425,9 +459,9 @@ async function refreshDetail() {
   document.getElementById("d-resume").hidden = !terminal;
   document.getElementById("d-interrupt").hidden = terminal;
   document.getElementById("d-stop").hidden = terminal;
-  // Logs are hidden while the terminal is open — skip fetching them, but the
-  // status above is already up to date.
-  if (activeTab === "term") return;
+  // Only the Logs tab pulls logs; on the terminal or the (one-shot) diff view,
+  // leave the pane alone — just keep the status above current.
+  if (activeTab !== "logs") return;
   try {
     const res = await api("/agents/" + selected + "/logs");
     if (res.ok) {
@@ -438,15 +472,39 @@ async function refreshDetail() {
   } catch (e) { /* leave previous logs */ }
 }
 
+// Colorize a unified diff for the logs pane (added/removed/hunk/file lines).
+function renderDiff(diff) {
+  return diff.split("\n").map((line) => {
+    const text = esc(line);
+    if (line.startsWith("+") && !line.startsWith("+++")) return '<span class="d-add">' + text + "</span>";
+    if (line.startsWith("-") && !line.startsWith("---")) return '<span class="d-del">' + text + "</span>";
+    if (line.startsWith("@@")) return '<span class="d-hunk">' + text + "</span>";
+    if (line.startsWith("diff ") || line.startsWith("+++") || line.startsWith("---") ||
+        line.startsWith("index ") || line.startsWith("?? ") || line.startsWith('#'))
+      return '<span class="d-file">' + text + "</span>";
+    return text;
+  }).join("\n");
+}
+
 async function loadDiff() {
   if (!selected) return;
-  note("loading diff…");
+  // Diff is a one-shot view: switch the pane to it (away from the terminal) so
+  // it's actually visible, and mark the tab state so the poll won't overwrite it.
+  closeTerminal();
+  activeTab = "diff";
+  document.getElementById("tab-logs").classList.remove("active");
+  document.getElementById("tab-term").classList.remove("active");
+  document.getElementById("d-term").hidden = true;
+  const pane = document.getElementById("d-logs");
+  pane.hidden = false;
+  pane.innerHTML = '<span class="spinner"></span> loading diff…';
   try {
     const res = await api("/agents/" + selected + "/diff");
     const body = await res.json();
-    document.getElementById("d-logs").textContent = res.ok ? (body.diff || "(no changes)") : (body.error || "diff failed");
-    note("showing diff");
-  } catch (e) { note("diff failed"); }
+    if (!res.ok) { pane.textContent = body.error || "diff failed"; return; }
+    const diff = (body.diff || "").replace(/\s+$/, "");
+    pane.innerHTML = diff ? renderDiff(diff) : "(no changes)";
+  } catch (e) { pane.textContent = "diff failed"; }
 }
 
 async function sendReply() {
@@ -454,6 +512,7 @@ async function sendReply() {
   const input = document.getElementById("d-reply");
   const text = input.value;
   if (!text) return;
+  noteBusy("sending…");
   try {
     const res = await api("/agents/" + selected + "/input", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -466,6 +525,7 @@ async function sendReply() {
 
 async function act(path) {
   if (!selected) return;
+  noteBusy(path + "…");
   try {
     const res = await api("/agents/" + selected + "/" + path, { method: "POST" });
     note(res.ok ? (path + " sent") : ((await res.json()).error || (path + " failed")));
