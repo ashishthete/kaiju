@@ -38,7 +38,23 @@ function renderDiff(diff) {
   }).join("\n");
 }
 
+// Trim a path from the FRONT so the meaningful tail stays visible, e.g.
+// "/Users/a/work/projects/x/webapp/esg" -> "…/x/webapp/esg". Keeps whole path
+// segments and never drops below the last one.
+function shortPath(path, max) {
+  max = max || 44;
+  if (!path || path.length <= max) return path || "";
+  const parts = path.split("/").filter(Boolean);
+  let acc = "";
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const next = "/" + parts[i] + acc;
+    if (acc && ("…" + next).length > max) break;
+    acc = next;
+  }
+  return "…" + acc;
+}
+
 // Export for node tests; the guard is a no-op in the browser (module undefined).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { ORDER, ATTENTION, TERMINAL, fmtDuration, esc, renderDiff };
+  module.exports = { ORDER, ATTENTION, TERMINAL, fmtDuration, esc, renderDiff, shortPath };
 }

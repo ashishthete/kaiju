@@ -2,7 +2,7 @@
 //   node --test crates/kaiju-daemon/assets/
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { ORDER, ATTENTION, TERMINAL, fmtDuration, esc, renderDiff } = require("./dashboard-utils.js");
+const { ORDER, ATTENTION, TERMINAL, fmtDuration, esc, renderDiff, shortPath } = require("./dashboard-utils.js");
 
 test("fmtDuration formats seconds, minutes, and hours", () => {
   assert.equal(fmtDuration(0), "0s");
@@ -46,6 +46,25 @@ test("renderDiff does not mistake +++/--- file markers for add/del lines", () =>
   const out = renderDiff("+++ b/file\n--- a/file");
   assert.match(out, /<span class="d-file">\+\+\+ b\/file<\/span>/);
   assert.match(out, /<span class="d-file">--- a\/file<\/span>/);
+});
+
+test("shortPath trims from the front, keeping whole trailing segments", () => {
+  const p = "/Users/a/work/projects/asrs/credibl-esg/webapp/esg";
+  const out = shortPath(p, 44);
+  assert.ok(out.startsWith("…/"), out);
+  assert.ok(out.endsWith("/webapp/esg"), out);
+  assert.ok(out.length <= 44, "length " + out.length);
+});
+
+test("shortPath leaves short paths untouched and handles empties", () => {
+  assert.equal(shortPath("/a/b", 44), "/a/b");
+  assert.equal(shortPath("", 44), "");
+  assert.equal(shortPath(null, 44), "");
+});
+
+test("shortPath always keeps at least the last segment", () => {
+  const out = shortPath("/very/deep/" + "x".repeat(80), 20);
+  assert.ok(out.includes("x".repeat(80)), "keeps the final segment whole");
 });
 
 test("renderDiff escapes HTML in diff content", () => {

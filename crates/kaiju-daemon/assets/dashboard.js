@@ -276,7 +276,7 @@ async function refreshDetail() {
   badge.className = "status s-" + (st || "");
   const ws = lastWorkspace[selected] || "";
   const wsEl = document.getElementById("d-workspace");
-  wsEl.textContent = ws;
+  wsEl.textContent = shortPath(ws);   // trim from the front; full path in the tooltip
   wsEl.title = ws;
   // Offer Resume on a finished agent; Interrupt/Stop only while it's active.
   const terminal = TERMINAL.has(st);
