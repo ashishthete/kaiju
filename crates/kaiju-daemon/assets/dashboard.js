@@ -4,8 +4,11 @@
 let selected = null;
 let lastStatus = {};
 let lastWorkspace = {};   // agent id -> workspace path, from the latest poll
+let lastUpdated = {};     // agent id -> updated_at (ISO), for "last activity"
+let lastAgents = [];      // most recent fetch, so filtering re-renders without refetch
 let token = localStorage.getItem("kaiju_token") || "";
 let term = null, ws = null, activeTab = "term";
+let paused = false, pollTimer = null;
 
 let notifyOn = localStorage.getItem("kaiju_notify") === "1";
 
@@ -239,24 +242,32 @@ function noteBusy(msg) {
 }
 
 function render(agents) {
+  lastAgents = agents;
   document.getElementById("empty").hidden = agents.length > 0;
   const prev = lastStatus;            // previous poll's statuses, to detect transitions
   lastStatus = {};
   for (const a of agents) {
     lastStatus[a.id] = a.status;
     lastWorkspace[a.id] = a.workspace;
+    lastUpdated[a.id] = a.updated_at;
     notifyTransition(prev[a.id], a);
   }
 
+  // Status summary reflects the whole fleet (not the filtered view).
   const counts = {};
   for (const a of agents) counts[a.status] = (counts[a.status] || 0) + 1;
   document.getElementById("counts").innerHTML =
     Object.keys(counts).sort((x, y) => (ORDER[x]??9) - (ORDER[y]??9))
-      .map(s => `<span class="pill">${counts[s]} ${esc(s)}</span>`).join("");
+      .map(s => `<span class="pill">${counts[s]} ${esc(statusLabel(s))}</span>`).join("");
 
-  agents.sort((a, b) => (ORDER[a.status]??9) - (ORDER[b.status]??9));
+  // Apply the fleet filter (search text + status) to the displayed rows.
+  const ft = (document.getElementById("filter-text") || {}).value || "";
+  const fs = (document.getElementById("filter-status") || {}).value || "all";
+  const rows = agents
+    .filter(a => matchesFilter(a, ft) && (fs === "all" || a.status === fs))
+    .sort((a, b) => (ORDER[a.status]??9) - (ORDER[b.status]??9));
 
-  document.getElementById("rows").innerHTML = agents.map(a => {
+  document.getElementById("rows").innerHTML = rows.map(a => {
     const m = a.metrics || {};
     const attn = ATTENTION.has(a.status) ? "attention" : "";
     const sel = a.id === selected ? " selected" : "";
@@ -266,19 +277,38 @@ function render(agents) {
       <td class="id" title="${a.id}">${a.id.slice(0,10)}</td>
       <td>${esc(a.agent_type)}</td>
       <td>${esc(a.model) || "-"}</td>
-      <td><span class="status s-${a.status}">${esc(a.status)}</span></td>
+      <td><span class="status s-${a.status}">${esc(statusLabel(a.status))}</span></td>
       <td>${fmtDuration(m.runtime_secs || 0)}</td>
       <td>${toks}</td>
       <td>${cost}</td>
       <td class="prompt">${esc(a.prompt) || "-"}</td>
       <td class="actions" onclick="event.stopPropagation()">
-        <button title="Copy full ID" onclick="copyId('${a.id}')">⧉</button>
+        <button title="Copy ID" onclick="copyId('${a.id}')">⧉</button>
         <button title="Interrupt" onclick="rowAct('${a.id}','interrupt')">⎋</button>
         <button title="Stop" onclick="rowAct('${a.id}','stop')">■</button>
         <button title="Remove" onclick="removeAgent('${a.id}')">✕</button>
       </td>
     </tr>`;
   }).join("");
+}
+
+// Re-render the current fleet with the active filters (no refetch).
+function applyFilter() { render(lastAgents); }
+
+// Pause/resume the 2s live poll.
+function schedulePoll() { pollTimer = setInterval(refresh, 2000); }
+function togglePause() {
+  paused = !paused;
+  const btn = document.getElementById("pause-btn");
+  if (paused) {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    btn.textContent = "▶ Resume";
+    document.getElementById("updated").textContent = "paused";
+  } else {
+    btn.textContent = "⏸ Pause";
+    refresh();
+    schedulePoll();
+  }
 }
 
 function select(id) {
@@ -302,12 +332,14 @@ async function refreshDetail() {
   // which tab is open.
   const st = lastStatus[selected];
   const badge = document.getElementById("d-status");
-  badge.textContent = st || "?";
+  badge.textContent = statusLabel(st) || "?";
   badge.className = "status s-" + (st || "");
   const ws = lastWorkspace[selected] || "";
   const wsEl = document.getElementById("d-workspace");
   wsEl.textContent = shortPath(ws);   // trim from the front; full path in the tooltip
   wsEl.title = ws;
+  const upd = lastUpdated[selected];
+  document.getElementById("d-activity").textContent = upd ? "active " + timeAgo(upd) : "";
   // Offer Resume on a finished agent; Interrupt/Stop only while it's active.
   const terminal = TERMINAL.has(st);
   document.getElementById("d-resume").hidden = !terminal;
@@ -477,4 +509,4 @@ async function refresh() {
 
 initNotify();
 refresh();
-setInterval(refresh, 2000);
+schedulePoll();

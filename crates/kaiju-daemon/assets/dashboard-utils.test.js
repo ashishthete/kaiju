@@ -2,7 +2,33 @@
 //   node --test crates/kaiju-daemon/assets/
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { ORDER, ATTENTION, TERMINAL, fmtDuration, esc, renderDiff, shortPath } = require("./dashboard-utils.js");
+const { ORDER, ATTENTION, TERMINAL, statusLabel, timeAgo, matchesFilter, fmtDuration, esc, renderDiff, shortPath } = require("./dashboard-utils.js");
+
+test("statusLabel humanizes known statuses, passes through unknown", () => {
+  assert.equal(statusLabel("waitingforinput"), "Waiting for input");
+  assert.equal(statusLabel("running"), "Running");
+  assert.equal(statusLabel("mystery"), "mystery");
+  assert.equal(statusLabel(""), "");
+});
+
+test("timeAgo renders coarse relative buckets", () => {
+  const now = 1_000_000_000_000;
+  assert.equal(timeAgo(new Date(now - 30_000).toISOString(), now), "30s ago");
+  assert.equal(timeAgo(new Date(now - 5 * 60_000).toISOString(), now), "5m ago");
+  assert.equal(timeAgo(new Date(now - 3 * 3600_000).toISOString(), now), "3h ago");
+  assert.equal(timeAgo(new Date(now - 2 * 86400_000).toISOString(), now), "2d ago");
+  assert.equal(timeAgo("not-a-date", now), "");
+});
+
+test("matchesFilter matches across fields, case-insensitive", () => {
+  const a = { id: "abc123", agent_type: "claude", model: null, prompt: "Fix the bug", workspace: "/repo/web" };
+  assert.ok(matchesFilter(a, ""));
+  assert.ok(matchesFilter(a, "ABC"));
+  assert.ok(matchesFilter(a, "claude"));
+  assert.ok(matchesFilter(a, "bug"));
+  assert.ok(matchesFilter(a, "/repo"));
+  assert.ok(!matchesFilter(a, "python"));
+});
 
 test("fmtDuration formats seconds, minutes, and hours", () => {
   assert.equal(fmtDuration(0), "0s");

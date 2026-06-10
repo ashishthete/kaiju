@@ -66,7 +66,10 @@ pub const PAGE: &str = r#"<!doctype html>
 
   .card { background: var(--surface); border: 1px solid var(--border);
           border-radius: var(--radius); box-shadow: var(--shadow); }
-  .toolbar { padding: 1rem 1.1rem; margin-bottom: 1.25rem; }
+  .toolbar { padding: .55rem .7rem; margin-bottom: 1.25rem; display: flex; align-items: center;
+             gap: .55rem; flex-wrap: wrap; }
+  .filter { font-size: .85rem; }
+  #filter-text { flex: 0 1 16rem; min-width: 10rem; }
 
   .counts { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
   .pill { padding: .25rem .7rem; border-radius: 999px; font-size: .78rem; font-weight: 500;
@@ -81,7 +84,8 @@ pub const PAGE: &str = r#"<!doctype html>
   tbody tr { cursor: pointer; transition: background .1s ease; }
   tbody tr:hover { background: var(--surface-2); }
   tbody tr:last-child td { border-bottom: none; }
-  tr.selected { background: var(--accent-weak); box-shadow: inset 3px 0 0 var(--accent); }
+  tr.selected { background: var(--accent-weak); box-shadow: inset 4px 0 0 var(--accent); }
+  tr.selected td.id { color: var(--accent); }
   td.id { font-family: ui-monospace, monospace; font-weight: 500; }
 
   .status { font-weight: 600; padding: .2rem .55rem; border-radius: 999px; font-size: .76rem;
@@ -92,16 +96,22 @@ pub const PAGE: &str = r#"<!doctype html>
   .s-running { background: #22c55e22; color: #22c55e; }
   .s-starting { background: #3b82f622; color: #4c8dff; }
   .s-completed, .s-stopped { background: #88888822; color: #9aa4b2; }
-  .prompt { color: var(--muted); max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prompt { color: var(--text); max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .empty { color: var(--muted); padding: 2.5rem 0; text-align: center; }
   .attention td { background: #f59e0b12; }
 
   #detail { margin-top: 1.5rem; padding: 1.1rem 1.25rem; }
   #detail[hidden] { display: none; }
-  .detail-head { display: flex; align-items: center; gap: .75rem; margin-bottom: .85rem; }
+  .detail-head { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+                 position: sticky; top: 0; z-index: 5; background: var(--surface);
+                 margin: -1.1rem -1.25rem .85rem; padding: 1.1rem 1.25rem .75rem;
+                 border-bottom: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; }
   .detail-head .id { font-family: ui-monospace, monospace; font-weight: 600; font-size: 1.05rem; }
   .path { font-family: ui-monospace, monospace; font-size: .78rem; color: var(--muted);
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
+  .activity { font-size: .78rem; color: var(--muted); white-space: nowrap; }
+  button.danger { color: #ef4444; border-color: #ef444455; }
+  button.danger:hover { background: #ef444418; border-color: #ef4444; }
   .grow { flex: 1; }
 
   button { font: inherit; font-size: .85rem; padding: .4rem .8rem; border-radius: 7px;
@@ -179,8 +189,20 @@ pub const PAGE: &str = r#"<!doctype html>
 <body>
   <h1>Kaiju</h1>
   <div class="sub">Live fleet &middot; refreshing every 2s &middot; <span id="updated"></span></div>
-  <div class="card toolbar" style="margin-bottom:1.25rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap">
+  <div class="card toolbar">
     <button class="primary" onclick="toggleNew()">+ New agent</button>
+    <input id="filter-text" class="filter" placeholder="Search agents…" oninput="applyFilter()" autocomplete="off">
+    <select id="filter-status" class="filter" onchange="applyFilter()" title="Filter by status">
+      <option value="all">All statuses</option>
+      <option value="waitingforinput">Waiting for input</option>
+      <option value="stuck">Stuck</option>
+      <option value="error">Error</option>
+      <option value="running">Running</option>
+      <option value="starting">Starting</option>
+      <option value="completed">Completed</option>
+      <option value="stopped">Stopped</option>
+    </select>
+    <button id="pause-btn" onclick="togglePause()" title="Pause / resume live updates">⏸ Pause</button>
     <button class="icon" id="settings-btn" popovertarget="settings-pop" style="margin-left:auto"
             title="Settings" aria-label="Settings">⚙</button>
   </div>
@@ -247,12 +269,14 @@ pub const PAGE: &str = r#"<!doctype html>
   <div id="detail" class="card" hidden>
     <div class="detail-head">
       <span class="id" id="d-id"></span>
-      <button title="Copy full ID" onclick="copyId(selected)">⧉ copy id</button>
+      <button title="Copy full ID" onclick="copyId(selected)">⧉ Copy ID</button>
       <span class="status" id="d-status"></span>
+      <span class="grow"></span>
       <span class="path" id="d-workspace" title=""></span>
+      <span class="activity" id="d-activity"></span>
       <span class="grow"></span>
       <button id="d-interrupt" onclick="act('interrupt')">Interrupt</button>
-      <button id="d-stop" onclick="act('stop')">Stop</button>
+      <button id="d-stop" class="danger" onclick="act('stop')">Stop</button>
       <button id="d-resume" class="primary" onclick="act('resume')" hidden>Resume</button>
       <button onclick="closeDetail()">Close</button>
     </div>

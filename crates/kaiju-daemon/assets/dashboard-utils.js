@@ -12,6 +12,32 @@ const ATTENTION = new Set(["waitingforinput", "stuck"]);
 // Statuses an agent can't act from (offer Resume, hide Interrupt/Stop).
 const TERMINAL = new Set(["stopped", "completed", "error"]);
 
+// User-facing status labels (the API/CSS use the raw enum).
+const STATUS_LABELS = {
+  waitingforinput: "Waiting for input", running: "Running", starting: "Starting",
+  stuck: "Stuck", error: "Error", completed: "Completed", stopped: "Stopped",
+};
+function statusLabel(s) { return STATUS_LABELS[s] || s || ""; }
+
+// Relative "time ago" from an ISO timestamp. `nowMs` is injectable for tests.
+function timeAgo(iso, nowMs) {
+  const t = Date.parse(iso);
+  if (isNaN(t)) return "";
+  const s = Math.max(0, Math.floor(((nowMs == null ? Date.now() : nowMs) - t) / 1000));
+  if (s < 60) return s + "s ago";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  return Math.floor(s / 86400) + "d ago";
+}
+
+// Does an agent match a free-text fleet filter? (id / type / model / prompt / path)
+function matchesFilter(agent, text) {
+  if (!text) return true;
+  const q = text.toLowerCase();
+  return [agent.id, agent.agent_type, agent.model, agent.prompt, agent.workspace]
+    .some((f) => (f || "").toLowerCase().includes(q));
+}
+
 // Human-readable duration from seconds: "45s", "3m 5s", "2h 10m".
 function fmtDuration(s) {
   if (s < 60) return s + "s";
@@ -56,5 +82,8 @@ function shortPath(path, max) {
 
 // Export for node tests; the guard is a no-op in the browser (module undefined).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { ORDER, ATTENTION, TERMINAL, fmtDuration, esc, renderDiff, shortPath };
+  module.exports = {
+    ORDER, ATTENTION, TERMINAL, STATUS_LABELS,
+    statusLabel, timeAgo, matchesFilter, fmtDuration, esc, renderDiff, shortPath,
+  };
 }
