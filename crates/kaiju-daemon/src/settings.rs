@@ -123,10 +123,15 @@ mod tests {
             default_model: Some("claude-opus-4-8".to_string()),
             ..Settings::default()
         };
-        assert_eq!(s.apply(config(None, &[])).model.as_deref(), Some("claude-opus-4-8"));
+        assert_eq!(
+            s.apply(config(None, &[])).model.as_deref(),
+            Some("claude-opus-4-8")
+        );
         // An explicit model is preserved.
         assert_eq!(
-            s.apply(config(Some("claude-haiku-4-5"), &[])).model.as_deref(),
+            s.apply(config(Some("claude-haiku-4-5"), &[]))
+                .model
+                .as_deref(),
             Some("claude-haiku-4-5")
         );
     }
@@ -138,7 +143,10 @@ mod tests {
             ..Settings::default()
         };
         let out = s.apply(config(None, &["--foo"]));
-        assert_eq!(out.extra_args, vec!["--permission-mode", "acceptEdits", "--foo"]);
+        assert_eq!(
+            out.extra_args,
+            vec!["--permission-mode", "acceptEdits", "--foo"]
+        );
     }
 
     #[test]

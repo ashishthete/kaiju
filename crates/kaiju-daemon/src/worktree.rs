@@ -92,7 +92,10 @@ impl WorktreeManager {
         let git = |args: &[&str]| -> Result<std::process::Output> {
             let mut full = vec!["-C", &dir_str];
             full.extend_from_slice(args);
-            Command::new("git").args(&full).output().map_err(NexusError::Io)
+            Command::new("git")
+                .args(&full)
+                .output()
+                .map_err(NexusError::Io)
         };
 
         // HEAD-relative diff (staged + unstaged); fall back when there's no HEAD.

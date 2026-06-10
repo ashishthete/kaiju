@@ -332,7 +332,11 @@ pub fn resume_agent_internal(state: &AppState, id: &str) -> Result<()> {
         TmuxManager::kill_session(&agent.session_name)?;
     }
 
-    TmuxManager::create_session(&agent.session_name, &run_dir.display().to_string(), &command)?;
+    TmuxManager::create_session(
+        &agent.session_name,
+        &run_dir.display().to_string(),
+        &command,
+    )?;
     state.store.mark_started(id, chrono::Utc::now());
     state.store.update_status(id, AgentStatus::Running);
 

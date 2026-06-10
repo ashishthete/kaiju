@@ -253,7 +253,11 @@ async fn create_agent(
 ) -> impl IntoResponse {
     // Fall back to the configured default agent type when none is given.
     let type_str = if req.agent_type.trim().is_empty() {
-        state.settings.default_agent_type.clone().unwrap_or_default()
+        state
+            .settings
+            .default_agent_type
+            .clone()
+            .unwrap_or_default()
     } else {
         req.agent_type.clone()
     };
