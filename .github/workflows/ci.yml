@@ -20,3 +20,5 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      - name: Dashboard JS tests
+        run: node --test crates/kaiju-daemon/assets/

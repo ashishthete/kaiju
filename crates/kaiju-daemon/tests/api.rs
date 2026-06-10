@@ -189,7 +189,7 @@ async fn dashboard_served_at_root() {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(bytes.to_vec()).unwrap();
     assert!(html.contains("Kaiju"));
-    assert!(html.contains("/agents"));
+    assert!(html.contains(r#"src="/assets/dashboard.js""#));
 }
 
 #[tokio::test]
@@ -388,4 +388,28 @@ async fn xterm_asset_is_served_publicly() {
     assert_eq!(res.status(), StatusCode::OK);
     let ct = res.headers().get("content-type").unwrap().to_str().unwrap();
     assert!(ct.contains("javascript"), "got content-type {ct}");
+}
+
+#[tokio::test]
+async fn dashboard_scripts_are_served_publicly() {
+    for path in ["/assets/dashboard.js", "/assets/dashboard-utils.js"] {
+        let app = kaiju_daemon::server::build_app(kaiju_daemon::server::AppState::new());
+        let res = app.oneshot(get_request(path)).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{path}");
+        let ct = res.headers().get("content-type").unwrap().to_str().unwrap();
+        assert!(ct.contains("javascript"), "{path} content-type {ct}");
+    }
+}
+
+#[tokio::test]
+async fn dashboard_page_references_the_extracted_scripts() {
+    let app = kaiju_daemon::server::build_app(kaiju_daemon::server::AppState::new());
+    let res = app.oneshot(get_request("/")).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let html = String::from_utf8_lossy(&body);
+    assert!(html.contains(r#"src="/assets/dashboard-utils.js""#));
+    assert!(html.contains(r#"src="/assets/dashboard.js""#));
 }

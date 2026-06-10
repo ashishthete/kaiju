@@ -37,6 +37,11 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/assets/xterm.js", get(crate::terminal::xterm_js))
         .route("/assets/xterm.css", get(crate::terminal::xterm_css))
+        .route("/assets/dashboard.js", get(crate::dashboard::dashboard_js))
+        .route(
+            "/assets/dashboard-utils.js",
+            get(crate::dashboard::dashboard_utils_js),
+        )
         .route("/tasks", get(list_tasks).post(create_task))
         .route("/tasks/:id", get(get_task))
         .route("/tasks/:id/cancel", post(cancel_task))
