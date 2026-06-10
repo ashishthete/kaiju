@@ -120,6 +120,7 @@ need `KAIJU_URL` and, if auth is on, `KAIJU_TOKEN`).
 | `KAIJU_CONCURRENCY` | Max agents the pool runs at once | `2` |
 | `KAIJU_TOKEN` | Require this bearer token (auth off if unset) | — |
 | `KAIJU_SLACK_WEBHOOK` | Also post "needs you" alerts to Slack | — |
+| `KAIJU_DESKTOP_NOTIFY` | Native desktop notification on "needs you" (`1`/`true`) | off |
 | `KAIJU_CLAUDE_BIN` / `KAIJU_CODEX_BIN` / `KAIJU_GEMINI_BIN` | Override an agent's executable (pin a version / use a stub) | found on `PATH` |
 | `KAIJU_PRICING` | Token pricing file for cost estimates | `~/.kaiju/pricing.json` |
 | `KAIJU_CONFIG` | Global defaults applied to new agents | `~/.kaiju/config.json` |
