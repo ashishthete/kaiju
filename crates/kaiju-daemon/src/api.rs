@@ -43,6 +43,14 @@ pub fn routes() -> Router<AppState> {
             get(crate::dashboard::dashboard_utils_js),
         )
         .route("/settings", get(get_settings).put(put_settings))
+        .route("/pair", get(crate::pair_api::pair_page))
+        .route("/pair/code", post(crate::pair_api::pair_code))
+        .route("/pair/claim", post(crate::pair_api::pair_claim))
+        .route("/devices", get(crate::pair_api::list_devices))
+        .route(
+            "/devices/:id",
+            axum::routing::delete(crate::pair_api::revoke_device),
+        )
         .route("/tasks", get(list_tasks).post(create_task))
         .route("/tasks/:id", get(get_task))
         .route("/tasks/:id/cancel", post(cancel_task))

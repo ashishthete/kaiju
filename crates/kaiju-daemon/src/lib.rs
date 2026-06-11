@@ -14,6 +14,7 @@ pub mod logstore;
 pub mod monitor;
 pub mod net;
 pub mod notify;
+pub mod pair_api;
 pub mod pairing;
 pub mod persist;
 pub mod reconcile;

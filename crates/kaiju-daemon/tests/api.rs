@@ -470,3 +470,85 @@ async fn dashboard_page_references_the_extracted_scripts() {
     assert!(html.contains(r#"src="/assets/dashboard-utils.js""#));
     assert!(html.contains(r#"src="/assets/dashboard.js""#));
 }
+
+// -- Pairing + Device endpoints --
+
+#[tokio::test]
+async fn pair_claim_with_valid_code_returns_a_token() {
+    let state = AppState::new();
+    let now = chrono::Utc::now();
+    state
+        .pending_codes
+        .lock()
+        .unwrap()
+        .issue("TESTCODE".into(), now);
+    let app = build_app(state.clone());
+
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/pair/claim",
+            serde_json::json!({ "code": "TESTCODE", "name": "Phone" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let json = body_json(resp).await;
+    assert!(json["token"].as_str().is_some());
+    assert_eq!(state.devices.read().unwrap().devices.len(), 1);
+}
+
+#[tokio::test]
+async fn pair_claim_with_bad_code_is_rejected() {
+    let app = build_app(AppState::new());
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/pair/claim",
+            serde_json::json!({ "code": "WRONG", "name": "Phone" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn list_devices_returns_paired_without_tokens() {
+    let state = AppState::new();
+    state
+        .devices
+        .write()
+        .unwrap()
+        .add("Phone".into(), "tok-xyz".into(), chrono::Utc::now());
+    let app = build_app(state);
+    let resp = app.oneshot(get_request("/devices")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    // One device, name present, token NOT leaked.
+    assert_eq!(json[0]["name"], "Phone");
+    assert!(json[0].get("token").is_none());
+}
+
+#[tokio::test]
+async fn revoke_device_removes_it() {
+    let state = AppState::new();
+    let dev = state
+        .devices
+        .write()
+        .unwrap()
+        .add("Phone".into(), "tok-xyz".into(), chrono::Utc::now());
+    let app = build_app(state.clone());
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/devices/{}", dev.id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    assert_eq!(state.devices.read().unwrap().devices.len(), 0);
+}
