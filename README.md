@@ -114,11 +114,13 @@ need `KAIJU_URL` and, if auth is on, `KAIJU_TOKEN`).
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `KAIJU_PORT` | API / dashboard port | `7800` |
+| `KAIJU_HOST` | Bind address. `0.0.0.0` listens on your LAN | `127.0.0.1` |
 | `KAIJU_STATE` | Agent state file | `~/.kaiju/state.json` |
 | `KAIJU_TASKS` | Task queue file | `~/.kaiju/tasks.json` |
 | `KAIJU_WORKTREES` | Base dir for isolated worktrees | `~/.kaiju/worktrees` |
 | `KAIJU_CONCURRENCY` | Max agents the pool runs at once | `2` |
-| `KAIJU_TOKEN` | Require this bearer token (auth off if unset) | — |
+| `KAIJU_TOKEN` | Shared bearer token accepted from remote peers (optional — pairing works without it) | — |
+| `KAIJU_DEVICES` | Paired-device file (per-device tokens, `0600`) | `~/.kaiju/devices.json` |
 | `KAIJU_SLACK_WEBHOOK` | Also post "needs you" alerts to Slack | — |
 | `KAIJU_DESKTOP_NOTIFY` | Native desktop notification on "needs you" (`1`/`true`) | off |
 | `KAIJU_CLAUDE_BIN` / `KAIJU_CODEX_BIN` / `KAIJU_GEMINI_BIN` | Override an agent's executable (pin a version / use a stub) | found on `PATH` |
@@ -161,11 +163,34 @@ to each agent's own args. All keys are optional; restart to pick up edits.
 `max_tokens` / `max_cost_usd` are optional **budget caps**: the monitor stops an
 agent once it reaches either (cost requires pricing to be configured).
 
-**Auth:** set `KAIJU_TOKEN` before exposing the daemon beyond localhost. Clients
-then send `Authorization: Bearer <token>` (the CLI reads `KAIJU_TOKEN`; the
-dashboard prompts and stores it). `/health`, the dashboard page, and the
-vendored assets stay public; the terminal WebSocket authenticates via a
-`?token=` query param (browsers can't set headers on a WS handshake).
+**Auth & LAN access:** by default the daemon binds to `127.0.0.1`, so only the
+host machine can reach it. To use it from other devices on your network, set
+`KAIJU_HOST=0.0.0.0`, which binds **all** network interfaces. On a typical home
+machine that means your **local network only** — the router's NAT keeps it off
+the internet unless you deliberately port-forward or tunnel. On a cloud VM, or
+with an active VPN/Docker bridge, `0.0.0.0` may also expose it on those
+interfaces, so prefer binding a specific LAN IP (e.g. `KAIJU_HOST=192.168.1.5`)
+there.
+
+The trust model:
+
+- **The host machine is always trusted.** Requests from loopback (`127.0.0.1`)
+  need no token — that's your first, authoritative device.
+- **Remote devices must authenticate.** A peer that isn't loopback must present
+  either the shared `KAIJU_TOKEN` (if set) or a per-device token obtained by
+  pairing. Unpaired remote requests are rejected.
+- **Pairing:** on the host, open the dashboard → **Preferences (⚙) → Devices →
+  Pair a device**. It shows a QR (and a one-time code, valid 10 minutes) that
+  encodes `http://<lan-ip>:<port>/pair?code=…`. Scan it from the new device,
+  name it, and it receives its own token (stored in the browser like the shared
+  token). Each device is listed and individually **revocable**; tokens live in
+  `~/.kaiju/devices.json` (`0600`).
+
+Clients send `Authorization: Bearer <token>` (the CLI reads `KAIJU_TOKEN`; the
+dashboard stores whichever token it has). `/health`, the dashboard page, the
+pairing page, and the vendored assets stay public; the terminal WebSocket
+authenticates via a `?token=` query param (browsers can't set headers on a WS
+handshake).
 
 **State & restart:** the daemon persists its fleet and reloads on restart,
 marking any agent whose tmux session has since ended as stopped.

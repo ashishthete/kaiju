@@ -16,7 +16,16 @@ async fn main() {
         .and_then(|p| p.parse().ok())
         .unwrap_or(7800);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let host = std::env::var("KAIJU_HOST").ok();
+    let ip = kaiju_daemon::net::bind_ip(host.as_deref());
+    let addr = SocketAddr::new(ip, port);
+
+    if !ip.is_loopback() {
+        tracing::warn!(
+            "listening on {addr} — reachable from your local network. \
+             Set KAIJU_TOKEN or pair devices; unpaired remote requests are rejected."
+        );
+    }
 
     if let Err(e) = server::run(addr).await {
         eprintln!("fatal: {e}");

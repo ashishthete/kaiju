@@ -5,10 +5,12 @@
 //! here, so the suite runs in any environment (no terminal required).
 
 use axum::body::Body;
+use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use kaiju_daemon::server::{build_app, AppState};
 use serde_json::Value;
+use std::net::SocketAddr;
 use tower::ServiceExt; // for `oneshot`
 
 fn json_request(method: &str, uri: &str, body: Value) -> Request<Body> {
@@ -22,6 +24,35 @@ fn json_request(method: &str, uri: &str, body: Value) -> Request<Body> {
 
 fn get_request(uri: &str) -> Request<Body> {
     Request::builder().uri(uri).body(Body::empty()).unwrap()
+}
+
+/// Point `KAIJU_DEVICES` at a unique temp file so device-save side effects in
+/// handler tests never touch the real `~/.kaiju/devices.json`. `cargo test`
+/// shares one process, so the filename must be unique per test.
+fn isolate_devices_path(test_name: &str) {
+    let path = std::env::temp_dir().join(format!("kaiju-test-devices-{test_name}.json"));
+    let _ = std::fs::remove_file(&path);
+    std::env::set_var("KAIJU_DEVICES", &path);
+}
+
+/// A request carrying a simulated remote (non-loopback) peer, so the auth
+/// middleware exercises token enforcement rather than loopback trust.
+fn remote_request(uri: &str) -> Request<Body> {
+    let mut req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+    req.extensions_mut().insert(ConnectInfo(
+        "203.0.113.7:54321".parse::<SocketAddr>().unwrap(),
+    ));
+    req
+}
+
+/// A remote request that also presents a bearer token.
+fn remote_request_with_token(uri: &str, token: &str) -> Request<Body> {
+    let mut req = remote_request(uri);
+    req.headers_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().unwrap(),
+    );
+    req
 }
 
 async fn body_json(response: axum::response::Response) -> Value {
@@ -50,7 +81,7 @@ fn authed_state() -> AppState {
 #[tokio::test]
 async fn protected_route_rejects_missing_token() {
     let resp = build_app(authed_state())
-        .oneshot(get_request("/agents"))
+        .oneshot(remote_request("/agents"))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -58,12 +89,47 @@ async fn protected_route_rejects_missing_token() {
 
 #[tokio::test]
 async fn protected_route_accepts_valid_token() {
-    let req = Request::builder()
-        .uri("/agents")
-        .header("authorization", "Bearer secret")
-        .body(Body::empty())
+    let resp = build_app(authed_state())
+        .oneshot(remote_request_with_token("/agents", "secret"))
+        .await
         .unwrap();
-    let resp = build_app(authed_state()).oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn loopback_peer_is_trusted_without_token() {
+    // No ConnectInfo (in-process) = loopback = always allowed, even with a
+    // token configured. This is the host-machine trust anchor.
+    let resp = build_app(authed_state())
+        .oneshot(get_request("/agents"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn remote_peer_rejected_when_no_token_configured() {
+    // The LAN-exposed-without-a-shared-token case: a remote, unpaired device
+    // is still rejected (it must pair first).
+    let resp = build_app(AppState::new())
+        .oneshot(remote_request("/agents"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn remote_peer_with_device_token_is_accepted() {
+    let state = AppState::new();
+    state
+        .devices
+        .write()
+        .unwrap()
+        .add("Phone".into(), "dev-tok-1".into(), chrono::Utc::now());
+    let resp = build_app(state)
+        .oneshot(remote_request_with_token("/agents", "dev-tok-1"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
@@ -412,4 +478,89 @@ async fn dashboard_page_references_the_extracted_scripts() {
     let html = String::from_utf8_lossy(&body);
     assert!(html.contains(r#"src="/assets/dashboard-utils.js""#));
     assert!(html.contains(r#"src="/assets/dashboard.js""#));
+}
+
+// -- Pairing + Device endpoints --
+
+#[tokio::test]
+async fn pair_claim_with_valid_code_returns_a_token() {
+    isolate_devices_path("pair_claim_valid");
+    let state = AppState::new();
+    let now = chrono::Utc::now();
+    state
+        .pending_codes
+        .lock()
+        .unwrap()
+        .issue("TESTCODE".into(), now);
+    let app = build_app(state.clone());
+
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/pair/claim",
+            serde_json::json!({ "code": "TESTCODE", "name": "Phone" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let json = body_json(resp).await;
+    assert!(json["token"].as_str().is_some());
+    assert_eq!(state.devices.read().unwrap().devices.len(), 1);
+}
+
+#[tokio::test]
+async fn pair_claim_with_bad_code_is_rejected() {
+    let app = build_app(AppState::new());
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/pair/claim",
+            serde_json::json!({ "code": "WRONG", "name": "Phone" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn list_devices_returns_paired_without_tokens() {
+    isolate_devices_path("list_devices");
+    let state = AppState::new();
+    state
+        .devices
+        .write()
+        .unwrap()
+        .add("Phone".into(), "tok-xyz".into(), chrono::Utc::now());
+    let app = build_app(state);
+    let resp = app.oneshot(get_request("/devices")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    // One device, name present, token NOT leaked.
+    assert_eq!(json[0]["name"], "Phone");
+    assert!(json[0].get("token").is_none());
+}
+
+#[tokio::test]
+async fn revoke_device_removes_it() {
+    isolate_devices_path("revoke_device");
+    let state = AppState::new();
+    let dev = state
+        .devices
+        .write()
+        .unwrap()
+        .add("Phone".into(), "tok-xyz".into(), chrono::Utc::now());
+    let app = build_app(state.clone());
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/devices/{}", dev.id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    assert_eq!(state.devices.read().unwrap().devices.len(), 0);
 }

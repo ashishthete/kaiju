@@ -192,6 +192,10 @@ pub const PAGE: &str = r#"<!doctype html>
               border-top: 1px solid var(--border); padding-top: .6rem; }
   .pop-hint code { font-family: ui-monospace, monospace; background: var(--surface-2);
                    padding: .05rem .3rem; border-radius: 4px; }
+  .device-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+  .device-row { display: flex; justify-content: space-between; align-items: center;
+                gap: 8px; font-size: 13px; }
+  #pair-qr svg { width: 200px; height: 200px; }
 </style>
 </head>
 <body>
@@ -252,6 +256,16 @@ pub const PAGE: &str = r#"<!doctype html>
     <div class="pop-actions"><button class="primary" onclick="savePrefs()">Save</button></div>
     <div class="pop-status" id="pref-status" aria-live="polite"></div>
     <div class="pop-hint">Defaults apply to agents created <strong>after</strong> saving — running agents keep their settings. Token pricing for cost lives in <code>~/.kaiju/pricing.json</code>.</div>
+
+    <div class="pop-section">Devices</div>
+    <div class="pop-hint">Pair another device on your network. The host machine is always trusted.</div>
+    <div id="device-list" class="device-list"></div>
+    <div class="pop-actions"><button onclick="startPairing()">Pair a device</button></div>
+    <div id="pair-box" hidden style="text-align:center;margin-top:10px">
+      <div id="pair-qr"></div>
+      <div class="pop-hint">Scan this, or open <code id="pair-url"></code> and enter
+        <strong id="pair-code"></strong>. Valid for 10 minutes.</div>
+    </div>
   </div>
 
   <dialog id="newmodal" class="modal" onclick="if(event.target===this)closeNew()">
@@ -332,5 +346,62 @@ pub const PAGE: &str = r#"<!doctype html>
 
 <script src="/assets/dashboard-utils.js"></script>
 <script src="/assets/dashboard.js"></script>
+</body>
+</html>"#;
+
+/// The pairing claim page served at `GET /pair`. A scanned QR lands here with
+/// `?code=...`; it redeems the code and saves the returned token under the same
+/// `kaiju_token` localStorage key the dashboard reads, then redirects to `/`.
+pub const PAIR_PAGE: &str = r#"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pair this device — Kaiju</title>
+<style>
+  body { font: 16px system-ui, sans-serif; margin: 0; display: grid; place-items: center;
+         min-height: 100vh; background: #0b0c0f; color: #e6e6e6; }
+  .card { max-width: 360px; padding: 28px; text-align: center; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  input { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box;
+          border-radius: 8px; border: 1px solid #333; background: #15171c; color: #e6e6e6; }
+  button { padding: 10px 18px; border-radius: 8px; border: 0; background: #5b8cff;
+           color: #fff; font-weight: 600; cursor: pointer; }
+  .msg { margin-top: 12px; min-height: 1.4em; color: #ff8080; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Pair this device</h1>
+    <p>Name this device, then pair to access the Kaiju dashboard.</p>
+    <input id="name" placeholder="e.g. My phone" autocomplete="off">
+    <button onclick="claim()">Pair</button>
+    <div class="msg" id="msg"></div>
+  </div>
+<script>
+  const params = new URLSearchParams(location.search);
+  const code = params.get("code") || "";
+  document.getElementById("name").value =
+    /iphone|android|ipad|mobile/i.test(navigator.userAgent) ? "Phone" : "";
+  async function claim() {
+    const name = document.getElementById("name").value || "device";
+    const msg = document.getElementById("msg");
+    if (!code) { msg.textContent = "Missing pairing code in the link."; return; }
+    msg.textContent = "Pairing…";
+    try {
+      const res = await fetch("/pair/claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code, name }),
+      });
+      if (!res.ok) { msg.textContent = "Code invalid or expired. Ask for a new one."; return; }
+      const data = await res.json();
+      localStorage.setItem("kaiju_token", data.token);
+      location.href = "/";
+    } catch (e) {
+      msg.textContent = "Network error. Are you on the same network?";
+    }
+  }
+</script>
 </body>
 </html>"#;
