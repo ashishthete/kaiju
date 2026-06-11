@@ -11,6 +11,7 @@ pub mod dashboard;
 pub mod files;
 pub mod logstore;
 pub mod monitor;
+pub mod net;
 pub mod notify;
 pub mod persist;
 pub mod reconcile;
