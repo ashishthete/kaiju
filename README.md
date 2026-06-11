@@ -165,9 +165,12 @@ agent once it reaches either (cost requires pricing to be configured).
 
 **Auth & LAN access:** by default the daemon binds to `127.0.0.1`, so only the
 host machine can reach it. To use it from other devices on your network, set
-`KAIJU_HOST=0.0.0.0`. This exposes it to your **local network only** — a home
-router's NAT keeps it off the internet unless you deliberately port-forward or
-tunnel.
+`KAIJU_HOST=0.0.0.0`, which binds **all** network interfaces. On a typical home
+machine that means your **local network only** — the router's NAT keeps it off
+the internet unless you deliberately port-forward or tunnel. On a cloud VM, or
+with an active VPN/Docker bridge, `0.0.0.0` may also expose it on those
+interfaces, so prefer binding a specific LAN IP (e.g. `KAIJU_HOST=192.168.1.5`)
+there.
 
 The trust model:
 

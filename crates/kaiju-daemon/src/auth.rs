@@ -32,7 +32,7 @@ pub fn authorized(
             let matches = |candidate: &str| {
                 constant_time_eq::constant_time_eq(candidate.as_bytes(), p.as_bytes())
             };
-            shared.as_deref().map_or(false, |s| matches(s))
+            shared.as_deref().is_some_and(&matches)
                 || device_tokens.iter().any(|t| matches(t))
         }
     }
@@ -41,7 +41,7 @@ pub fn authorized(
 /// True when the peer is loopback. `None` (no connection info — only happens in
 /// the in-process test harness) is treated as loopback.
 pub fn is_loopback(peer: Option<SocketAddr>) -> bool {
-    peer.map_or(true, |addr| addr.ip().is_loopback())
+    peer.is_none_or(|addr| addr.ip().is_loopback())
 }
 
 /// Extract the token from an `Authorization: Bearer <token>` header value.
@@ -92,6 +92,9 @@ pub async fn require_auth(
         // token or a loopback request with no token). Reuses the tokens we
         // already read above — no second lock acquisition for the common case.
         if let Some(ref p) = provided_owned {
+            // Plain `==` is fine here (unlike `authorized`, which is
+            // constant-time): this runs only *after* auth succeeded, so the
+            // caller already holds a valid token — the comparison leaks nothing.
             if tokens.iter().any(|t| t == p) {
                 state
                     .devices
