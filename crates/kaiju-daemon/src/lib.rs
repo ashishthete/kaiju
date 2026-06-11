@@ -8,6 +8,7 @@ pub mod api;
 pub mod auth;
 pub mod batch;
 pub mod dashboard;
+pub mod devices;
 pub mod files;
 pub mod logstore;
 pub mod monitor;
