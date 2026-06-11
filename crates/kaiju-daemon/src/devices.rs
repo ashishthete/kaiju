@@ -53,9 +53,9 @@ impl Devices {
     }
 
     /// Update `last_seen` for whichever device presented this token (if any).
-    pub fn touch_by_token(&mut self, token: &str) {
+    pub fn touch_by_token(&mut self, token: &str, now: DateTime<Utc>) {
         if let Some(d) = self.devices.iter_mut().find(|d| d.token == token) {
-            d.last_seen = Utc::now();
+            d.last_seen = now;
         }
     }
 }
@@ -81,7 +81,8 @@ pub fn load() -> Devices {
     serde_json::from_str(&content).unwrap_or_default()
 }
 
-/// Persist devices (pretty JSON), creating the directory if needed.
+/// Persist devices (pretty JSON), creating the directory if needed. Tokens are
+/// stored in plaintext, so on unix the file is restricted to the owner (0600).
 pub fn save(devices: &Devices) -> Result<()> {
     let path = devices_path().ok_or_else(|| {
         NexusError::Io(std::io::Error::new(
@@ -95,6 +96,12 @@ pub fn save(devices: &Devices) -> Result<()> {
     let json = serde_json::to_string_pretty(devices)
         .map_err(|e| NexusError::Io(std::io::Error::other(e.to_string())))?;
     std::fs::write(&path, json).map_err(NexusError::Io)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(NexusError::Io)?;
+    }
     Ok(())
 }
 
@@ -127,9 +134,12 @@ mod tests {
     #[test]
     fn touch_only_matching_token() {
         let mut d = Devices::default();
-        d.add("Phone".into(), "tok-1".into(), now());
-        d.touch_by_token("tok-1"); // no panic, updates in place
-        d.touch_by_token("unknown"); // no-op
+        let created = "2026-06-11T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let later = "2026-06-11T01:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        d.add("Phone".into(), "tok-1".into(), created);
+        d.touch_by_token("tok-1", later);
+        d.touch_by_token("unknown", later); // no-op
         assert_eq!(d.devices.len(), 1);
+        assert_eq!(d.devices[0].last_seen, later);
     }
 }
