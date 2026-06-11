@@ -26,6 +26,15 @@ fn get_request(uri: &str) -> Request<Body> {
     Request::builder().uri(uri).body(Body::empty()).unwrap()
 }
 
+/// Point `KAIJU_DEVICES` at a unique temp file so device-save side effects in
+/// handler tests never touch the real `~/.kaiju/devices.json`. `cargo test`
+/// shares one process, so the filename must be unique per test.
+fn isolate_devices_path(test_name: &str) {
+    let path = std::env::temp_dir().join(format!("kaiju-test-devices-{test_name}.json"));
+    let _ = std::fs::remove_file(&path);
+    std::env::set_var("KAIJU_DEVICES", &path);
+}
+
 /// A request carrying a simulated remote (non-loopback) peer, so the auth
 /// middleware exercises token enforcement rather than loopback trust.
 fn remote_request(uri: &str) -> Request<Body> {
@@ -475,6 +484,7 @@ async fn dashboard_page_references_the_extracted_scripts() {
 
 #[tokio::test]
 async fn pair_claim_with_valid_code_returns_a_token() {
+    isolate_devices_path("pair_claim_valid");
     let state = AppState::new();
     let now = chrono::Utc::now();
     state
@@ -515,6 +525,7 @@ async fn pair_claim_with_bad_code_is_rejected() {
 
 #[tokio::test]
 async fn list_devices_returns_paired_without_tokens() {
+    isolate_devices_path("list_devices");
     let state = AppState::new();
     state
         .devices
@@ -532,6 +543,7 @@ async fn list_devices_returns_paired_without_tokens() {
 
 #[tokio::test]
 async fn revoke_device_removes_it() {
+    isolate_devices_path("revoke_device");
     let state = AppState::new();
     let dev = state
         .devices
