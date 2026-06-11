@@ -110,6 +110,21 @@ async fn remote_peer_rejected_when_no_token_configured() {
 }
 
 #[tokio::test]
+async fn remote_peer_with_device_token_is_accepted() {
+    let state = AppState::new();
+    state
+        .devices
+        .write()
+        .unwrap()
+        .add("Phone".into(), "dev-tok-1".into(), chrono::Utc::now());
+    let resp = build_app(state)
+        .oneshot(remote_request_with_token("/agents", "dev-tok-1"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn health_and_dashboard_are_public_under_auth() {
     let h = build_app(authed_state())
         .oneshot(get_request("/health"))

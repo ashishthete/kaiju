@@ -28,7 +28,13 @@ pub fn authorized(
     }
     match provided {
         None => false,
-        Some(p) => shared.as_deref() == Some(p) || device_tokens.iter().any(|t| t == p),
+        Some(p) => {
+            let matches = |candidate: &str| {
+                constant_time_eq::constant_time_eq(candidate.as_bytes(), p.as_bytes())
+            };
+            shared.as_deref().map_or(false, |s| matches(s))
+                || device_tokens.iter().any(|t| matches(t))
+        }
     }
 }
 
@@ -66,7 +72,7 @@ pub async fn require_auth(
         || path == "/pair"
         || path == "/pair/claim"
         || path.starts_with("/assets/")
-        || path.ends_with("/terminal/ws")
+        || (path.ends_with("/terminal/ws") && path.contains("/agents/"))
     {
         return next.run(req).await;
     }
@@ -82,13 +88,17 @@ pub async fn require_auth(
     let tokens = state.devices.read().expect("devices lock").tokens();
 
     if authorized(loopback, &state.auth_token, &tokens, provided_owned.as_deref()) {
-        // Refresh last-seen for the presenting device (no-op if not a device).
+        // Only bump last_seen when the token matched a *device* (not the shared
+        // token or a loopback request with no token). Reuses the tokens we
+        // already read above — no second lock acquisition for the common case.
         if let Some(ref p) = provided_owned {
-            state
-                .devices
-                .write()
-                .expect("devices lock")
-                .touch_by_token(p, chrono::Utc::now());
+            if tokens.iter().any(|t| t == p) {
+                state
+                    .devices
+                    .write()
+                    .expect("devices lock")
+                    .touch_by_token(p, chrono::Utc::now());
+            }
         }
         next.run(req).await
     } else {
