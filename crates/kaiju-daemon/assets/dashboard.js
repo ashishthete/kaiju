@@ -20,7 +20,7 @@ function initNotify() {
   }
   // Refresh the Preferences form from the daemon each time the popover opens.
   const pop = document.getElementById("settings-pop");
-  if (pop) pop.addEventListener("toggle", (e) => { if (e.newState === "open") loadPrefs(); });
+  if (pop) pop.addEventListener("toggle", (e) => { if (e.newState === "open") { loadPrefs(); loadDevices(); } });
 }
 
 // Load the daemon's current defaults into the Preferences form (on popover open).
@@ -524,3 +524,38 @@ async function refresh() {
 initNotify();
 refresh();
 schedulePoll();
+
+// --- Device pairing ---
+
+async function loadDevices() {
+  const box = document.getElementById("device-list");
+  if (!box) return;
+  try {
+    const res = await api("/devices");
+    if (!res.ok) { box.innerHTML = ""; return; }
+    const devices = await res.json();
+    if (!devices.length) { box.innerHTML = '<div class="pop-hint">No paired devices.</div>'; return; }
+    box.innerHTML = devices.map(function (d) {
+      return '<div class="device-row"><span>' + esc(d.name) +
+        '</span><button onclick="revokeDevice(\'' + d.id + '\')">Revoke</button></div>';
+    }).join("");
+  } catch (e) { /* not authorized / offline — leave blank */ }
+}
+
+async function startPairing() {
+  try {
+    const res = await api("/pair/code", { method: "POST" });
+    if (!res.ok) { alert("Could not start pairing."); return; }
+    const data = await res.json();
+    document.getElementById("pair-qr").innerHTML = data.qr_svg || "";
+    document.getElementById("pair-url").textContent = data.url;
+    document.getElementById("pair-code").textContent = data.code;
+    document.getElementById("pair-box").hidden = false;
+  } catch (e) { alert("Could not start pairing."); }
+}
+
+async function revokeDevice(id) {
+  if (!confirm("Revoke this device? It will need to pair again.")) return;
+  await api("/devices/" + encodeURIComponent(id), { method: "DELETE" });
+  loadDevices();
+}

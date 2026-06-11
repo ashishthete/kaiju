@@ -192,6 +192,10 @@ pub const PAGE: &str = r#"<!doctype html>
               border-top: 1px solid var(--border); padding-top: .6rem; }
   .pop-hint code { font-family: ui-monospace, monospace; background: var(--surface-2);
                    padding: .05rem .3rem; border-radius: 4px; }
+  .device-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+  .device-row { display: flex; justify-content: space-between; align-items: center;
+                gap: 8px; font-size: 13px; }
+  #pair-qr svg { width: 200px; height: 200px; }
 </style>
 </head>
 <body>
@@ -252,6 +256,16 @@ pub const PAGE: &str = r#"<!doctype html>
     <div class="pop-actions"><button class="primary" onclick="savePrefs()">Save</button></div>
     <div class="pop-status" id="pref-status" aria-live="polite"></div>
     <div class="pop-hint">Defaults apply to agents created <strong>after</strong> saving — running agents keep their settings. Token pricing for cost lives in <code>~/.kaiju/pricing.json</code>.</div>
+
+    <div class="pop-section">Devices</div>
+    <div class="pop-hint">Pair another device on your network. The host machine is always trusted.</div>
+    <div id="device-list" class="device-list"></div>
+    <div class="pop-actions"><button onclick="startPairing()">Pair a device</button></div>
+    <div id="pair-box" hidden style="text-align:center;margin-top:10px">
+      <div id="pair-qr"></div>
+      <div class="pop-hint">Scan this, or open <code id="pair-url"></code> and enter
+        <strong id="pair-code"></strong>. Valid for 10 minutes.</div>
+    </div>
   </div>
 
   <dialog id="newmodal" class="modal" onclick="if(event.target===this)closeNew()">
