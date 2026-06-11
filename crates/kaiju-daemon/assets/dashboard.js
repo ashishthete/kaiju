@@ -20,7 +20,14 @@ function initNotify() {
   }
   // Refresh the Preferences form from the daemon each time the popover opens.
   const pop = document.getElementById("settings-pop");
-  if (pop) pop.addEventListener("toggle", (e) => { if (e.newState === "open") { loadPrefs(); loadDevices(); } });
+  if (pop) pop.addEventListener("toggle", (e) => {
+    if (e.newState === "open") {
+      const pb = document.getElementById("pair-box");
+      if (pb) pb.hidden = true;
+      loadPrefs();
+      loadDevices();
+    }
+  });
 }
 
 // Load the daemon's current defaults into the Preferences form (on popover open).
@@ -556,6 +563,9 @@ async function startPairing() {
 
 async function revokeDevice(id) {
   if (!confirm("Revoke this device? It will need to pair again.")) return;
-  await api("/devices/" + encodeURIComponent(id), { method: "DELETE" });
+  try {
+    const res = await api("/devices/" + encodeURIComponent(id), { method: "DELETE" });
+    if (!res.ok) alert("Revoke failed.");
+  } catch (e) { alert("Revoke failed."); }
   loadDevices();
 }
