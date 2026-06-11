@@ -34,6 +34,10 @@ pub struct AppState {
     /// Defaults applied to every newly-created agent. Behind a lock so the
     /// Preferences endpoint can update it live (no daemon restart needed).
     pub settings: std::sync::Arc<std::sync::RwLock<crate::settings::Settings>>,
+    /// Paired devices and their tokens. Mutable at runtime (pair / revoke).
+    pub devices: std::sync::Arc<std::sync::RwLock<crate::devices::Devices>>,
+    /// Outstanding one-time pairing codes (in-memory; lost on restart).
+    pub pending_codes: std::sync::Arc<std::sync::Mutex<crate::pairing::PendingCodes>>,
 }
 
 impl AppState {
@@ -56,6 +60,12 @@ impl AppState {
             auth_token: None,
             settings: std::sync::Arc::new(std::sync::RwLock::new(
                 crate::settings::Settings::default(),
+            )),
+            devices: std::sync::Arc::new(std::sync::RwLock::new(
+                crate::devices::Devices::default(),
+            )),
+            pending_codes: std::sync::Arc::new(std::sync::Mutex::new(
+                crate::pairing::PendingCodes::default(),
             )),
         }
     }
@@ -183,6 +193,7 @@ pub async fn run(addr: SocketAddr) -> Result<()> {
         info!("token authentication enabled");
     }
     state.settings = std::sync::Arc::new(std::sync::RwLock::new(crate::settings::load()));
+    state.devices = std::sync::Arc::new(std::sync::RwLock::new(crate::devices::load()));
 
     // Background task: poll running agents and update their status/metrics.
     tokio::spawn(monitor::run_monitor(state.clone(), MONITOR_INTERVAL));
@@ -199,7 +210,12 @@ pub async fn run(addr: SocketAddr) -> Result<()> {
     info!("Kaiju daemon listening on {addr}");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await.map_err(NexusError::Io)?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .map_err(NexusError::Io)?;
 
     Ok(())
 }

@@ -5,10 +5,12 @@
 //! here, so the suite runs in any environment (no terminal required).
 
 use axum::body::Body;
+use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use kaiju_daemon::server::{build_app, AppState};
 use serde_json::Value;
+use std::net::SocketAddr;
 use tower::ServiceExt; // for `oneshot`
 
 fn json_request(method: &str, uri: &str, body: Value) -> Request<Body> {
@@ -22,6 +24,26 @@ fn json_request(method: &str, uri: &str, body: Value) -> Request<Body> {
 
 fn get_request(uri: &str) -> Request<Body> {
     Request::builder().uri(uri).body(Body::empty()).unwrap()
+}
+
+/// A request carrying a simulated remote (non-loopback) peer, so the auth
+/// middleware exercises token enforcement rather than loopback trust.
+fn remote_request(uri: &str) -> Request<Body> {
+    let mut req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+    req.extensions_mut().insert(ConnectInfo(
+        "203.0.113.7:54321".parse::<SocketAddr>().unwrap(),
+    ));
+    req
+}
+
+/// A remote request that also presents a bearer token.
+fn remote_request_with_token(uri: &str, token: &str) -> Request<Body> {
+    let mut req = remote_request(uri);
+    req.headers_mut().insert(
+        "authorization",
+        format!("Bearer {token}").parse().unwrap(),
+    );
+    req
 }
 
 async fn body_json(response: axum::response::Response) -> Value {
@@ -50,7 +72,7 @@ fn authed_state() -> AppState {
 #[tokio::test]
 async fn protected_route_rejects_missing_token() {
     let resp = build_app(authed_state())
-        .oneshot(get_request("/agents"))
+        .oneshot(remote_request("/agents"))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -58,13 +80,33 @@ async fn protected_route_rejects_missing_token() {
 
 #[tokio::test]
 async fn protected_route_accepts_valid_token() {
-    let req = Request::builder()
-        .uri("/agents")
-        .header("authorization", "Bearer secret")
-        .body(Body::empty())
+    let resp = build_app(authed_state())
+        .oneshot(remote_request_with_token("/agents", "secret"))
+        .await
         .unwrap();
-    let resp = build_app(authed_state()).oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn loopback_peer_is_trusted_without_token() {
+    // No ConnectInfo (in-process) = loopback = always allowed, even with a
+    // token configured. This is the host-machine trust anchor.
+    let resp = build_app(authed_state())
+        .oneshot(get_request("/agents"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn remote_peer_rejected_when_no_token_configured() {
+    // The LAN-exposed-without-a-shared-token case: a remote, unpaired device
+    // is still rejected (it must pair first).
+    let resp = build_app(AppState::new())
+        .oneshot(remote_request("/agents"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

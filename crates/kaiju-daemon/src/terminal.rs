@@ -2,10 +2,11 @@
 //! pane (poll + repaint) and forwards keystrokes (raw `send-keys -H`).
 //! Also serves the vendored xterm.js assets.
 
+use std::net::SocketAddr;
 use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, Query, State};
+use axum::extract::{ConnectInfo, Path, Query, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -76,14 +77,18 @@ pub struct TokenQuery {
 /// `GET /agents/:id/terminal/ws` — upgrade to a terminal WebSocket.
 ///
 /// Exempt from the header-based auth middleware; authenticates here against the
-/// same configured token, taken from the query string.
+/// same configured token or a registered device token, taken from the query
+/// string. Loopback peers are always trusted.
 pub async fn terminal_ws(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
+    peer: Option<ConnectInfo<SocketAddr>>,
     Path(id): Path<String>,
     Query(q): Query<TokenQuery>,
 ) -> Response {
-    if !crate::auth::authorized(&state.auth_token, q.token.as_deref()) {
+    let loopback = crate::auth::is_loopback(peer.map(|c| c.0));
+    let tokens = state.devices.read().expect("devices lock").tokens();
+    if !crate::auth::authorized(loopback, &state.auth_token, &tokens, q.token.as_deref()) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     let session = match state.store.get(&id) {
