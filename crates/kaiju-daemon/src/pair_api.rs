@@ -31,7 +31,10 @@ pub async fn pair_code(
 
     let host = advertised_base(&headers);
     let url = format!("{host}/pair?code={code}");
-    let qr_svg = crate::pairing::qr_svg(&url).unwrap_or_default();
+    let qr_svg = crate::pairing::qr_svg(&url).unwrap_or_else(|e| {
+        tracing::warn!("QR generation failed for pairing URL: {e}");
+        String::new()
+    });
     Json(PairCodeResponse { code, url, qr_svg })
 }
 
@@ -74,11 +77,18 @@ pub async fn pair_claim(
         .expect("codes lock")
         .redeem(&req.code, now);
     if !ok {
-        return Err((StatusCode::FORBIDDEN, "invalid or expired code"));
+        return Err((
+            StatusCode::FORBIDDEN,
+            axum::Json(serde_json::json!({ "error": "invalid or expired code" })),
+        ));
     }
 
     let token = uuid::Uuid::new_v4().to_string();
-    let name = req.name.unwrap_or_else(|| "device".to_string());
+    let name = req
+        .name
+        .map(|n| n.trim().chars().take(64).collect::<String>())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "device".to_string());
     {
         let mut devices = state.devices.write().expect("devices lock");
         devices.add(name, token.clone(), now);
