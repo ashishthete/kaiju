@@ -28,7 +28,10 @@ mod tests {
 
     #[test]
     fn explicit_lan_ip_parses() {
-        assert_eq!(bind_ip(Some("192.168.1.5")), "192.168.1.5".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            bind_ip(Some("192.168.1.5")),
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 5))
+        );
     }
 
     #[test]
