@@ -757,7 +757,7 @@ async function judgeComparison() {
     });
     if (!res.ok) { box.textContent = (await res.json()).error || "Judge failed."; btn.disabled = false; return; }
     const d = await res.json();
-    const legend = (d.legend || []).map(function (l) { return l.label + " = " + esc(l.agent_type); }).join("  \xb7  ");
+    const legend = (d.legend || []).map(function (l) { return esc(l.label) + " = " + esc(l.agent_type); }).join("  \xb7  ");
     box.innerHTML = '<div class="cmp-legend">' + legend + '</div>' +
       '<pre class="cmp-verdict-text">' + esc(d.verdict) + '</pre>';
   } catch (e) { box.textContent = "Judge failed."; }

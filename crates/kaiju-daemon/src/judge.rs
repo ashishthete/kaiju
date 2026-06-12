@@ -8,6 +8,8 @@ use kaiju_core::{NexusError, Result};
 /// One anonymized candidate the judge sees.
 pub struct Candidate {
     pub label: String,
+    /// The real CLI — used by the caller's legend, never put in the judge prompt
+    /// (that would defeat the anonymization).
     pub agent_type: String,
     pub diff: String,
 }
@@ -42,7 +44,7 @@ pub fn build_prompt(task: &str, candidates: &[Candidate]) -> String {
         s.push_str(&format!("\n### Candidate {}\n", c.label));
         let truncated: String = c.diff.chars().take(DIFF_CAP_CHARS).collect();
         s.push_str(&truncated);
-        if truncated.len() < c.diff.len() {
+        if c.diff.chars().count() > DIFF_CAP_CHARS {
             s.push_str("\n…[truncated]");
         }
         s.push('\n');
