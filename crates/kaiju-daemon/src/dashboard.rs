@@ -196,6 +196,15 @@ pub const PAGE: &str = r#"<!doctype html>
   .device-row { display: flex; justify-content: space-between; align-items: center;
                 gap: 8px; font-size: 13px; }
   #pair-qr svg { width: 200px; height: 200px; }
+
+  .cmp-cols { display: flex; gap: 12px; overflow-x: auto; padding: 4px 0; }
+  .cmp-col { flex: 1 0 320px; min-width: 320px; display: flex; flex-direction: column;
+             border: 1px solid #2a2f3a; border-radius: 8px; overflow: hidden; }
+  .cmp-col-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+                  background: #161b22; font-weight: 600; }
+  .cmp-col-head .grow { flex: 1; }
+  .cmp-diff { margin: 0; padding: 8px 10px; max-height: 60vh; overflow: auto;
+              font-family: monospace; font-size: 12px; white-space: pre; }
 </style>
 </head>
 <body>
@@ -204,6 +213,7 @@ pub const PAGE: &str = r#"<!doctype html>
   <div class="card toolbar">
     <button class="primary" onclick="toggleNew()">+ New agent</button>
     <button onclick="openAdopt()">Adopt session</button>
+    <button onclick="openCompare()">Compare task</button>
     <input id="filter-text" class="filter" placeholder="Search agents…" oninput="applyFilter()" autocomplete="off">
     <select id="filter-status" class="filter" onchange="applyFilter()" title="Filter by status">
       <option value="all">All statuses</option>
@@ -328,6 +338,32 @@ pub const PAGE: &str = r#"<!doctype html>
     </div>
   </dialog>
 
+  <dialog id="comparemodal" class="modal" onclick="if(event.target===this)closeCompare()">
+    <div class="modal-head">
+      <h2>Compare task across CLIs</h2>
+      <button type="button" class="icon" onclick="closeCompare()" title="Close">&times;</button>
+    </div>
+    <label class="field">
+      <span>Workspace path <em>*</em></span>
+      <input id="cmp-ws" placeholder="/path/to/repo (git)" autocomplete="off">
+    </label>
+    <label class="field">
+      <span>Prompt <em>*</em></span>
+      <textarea id="cmp-prompt" rows="3" placeholder="What should each agent do?"></textarea>
+    </label>
+    <div class="field">
+      <span>Run on</span>
+      <label class="check"><input type="checkbox" class="cmp-type" value="claude" checked> claude</label>
+      <label class="check"><input type="checkbox" class="cmp-type" value="codex"> codex</label>
+      <label class="check"><input type="checkbox" class="cmp-type" value="gemini"> gemini</label>
+    </div>
+    <div class="note">Each CLI runs the same prompt in its own isolated git worktree, so they don't clobber each other.</div>
+    <div class="modal-actions">
+      <button type="button" onclick="closeCompare()">Cancel</button>
+      <button type="button" class="primary" onclick="submitCompare()">Run comparison</button>
+    </div>
+  </dialog>
+
   <div class="counts" id="counts"></div>
   <div class="card" style="overflow:hidden">
   <table>
@@ -366,6 +402,16 @@ pub const PAGE: &str = r#"<!doctype html>
       <button class="primary" onclick="sendReply()">Send</button>
     </div>
     <div class="note" id="d-note"></div>
+  </div>
+
+  <div id="compare-panel" class="card" hidden>
+    <div class="detail-head">
+      <span class="id">Comparison</span>
+      <span class="path" id="cmp-prompt-label" title=""></span>
+      <span class="grow"></span>
+      <button onclick="closeComparison()">Close</button>
+    </div>
+    <div id="cmp-cols" class="cmp-cols"></div>
   </div>
 
 <script src="/assets/dashboard-utils.js"></script>
