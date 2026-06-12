@@ -57,6 +57,7 @@ pub fn routes() -> Router<AppState> {
         .route("/sessions", get(list_sessions))
         .route("/agents/adopt", post(adopt_agent))
         .route("/compare", post(compare))
+        .route("/compare/judge", post(compare_judge))
         .route("/health", get(health))
 }
 
@@ -109,6 +110,11 @@ pub struct CompareRequest {
     pub prompt: String,
     pub agent_types: Vec<String>,
     pub model: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct JudgeRequest {
+    pub group_id: String,
 }
 
 #[derive(Deserialize)]
@@ -605,5 +611,56 @@ async fn compare(
             };
             Err(err(code, &e.to_string()))
         }
+    }
+}
+
+/// `POST /compare/judge` — rank a compare group's runs with an LLM judge.
+async fn compare_judge(
+    State(state): State<AppState>,
+    Json(req): Json<JudgeRequest>,
+) -> impl IntoResponse {
+    let mut agents: Vec<_> = state
+        .store
+        .list()
+        .into_iter()
+        .filter(|a| a.compare_group.as_deref() == Some(req.group_id.as_str()))
+        .collect();
+    agents.sort_by_key(|a| a.created_at);
+    if agents.len() < 2 {
+        return Err(err(StatusCode::BAD_REQUEST, "need at least two runs to judge"));
+    }
+    let task = agents[0].prompt.clone().unwrap_or_default();
+    let workspace = agents[0].workspace.clone();
+    let candidates: Vec<crate::judge::Candidate> = agents
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let diff = crate::worktree::WorktreeManager::diff(a.run_dir()).unwrap_or_default();
+            crate::judge::Candidate {
+                label: crate::judge::label_for(i),
+                agent_type: a.agent_type.to_string(),
+                diff: if diff.trim().is_empty() {
+                    "(no changes)".to_string()
+                } else {
+                    diff
+                },
+            }
+        })
+        .collect();
+    let legend: Vec<serde_json::Value> = agents
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            serde_json::json!({
+                "label": crate::judge::label_for(i),
+                "agent_type": a.agent_type.to_string(),
+                "id": a.id
+            })
+        })
+        .collect();
+    let prompt = crate::judge::build_prompt(&task, &candidates);
+    match crate::judge::run_judge(&workspace, &prompt).await {
+        Ok(verdict) => Ok(Json(serde_json::json!({ "verdict": verdict, "legend": legend }))),
+        Err(e) => Err(err(StatusCode::BAD_GATEWAY, &format!("judge unavailable: {e}"))),
     }
 }
