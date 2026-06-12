@@ -102,6 +102,8 @@ pub const PAGE: &str = r#"<!doctype html>
 
   #detail { margin-top: 1.5rem; padding: 1.1rem 1.25rem; }
   #detail[hidden] { display: none; }
+  #compare-panel { margin-top: 1.5rem; padding: 1.1rem 1.25rem; }
+  #compare-panel[hidden] { display: none; }
   .detail-head { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
                  position: sticky; top: 0; z-index: 5; background: var(--surface);
                  margin: -1.1rem -1.25rem .85rem; padding: 1.1rem 1.25rem .75rem;

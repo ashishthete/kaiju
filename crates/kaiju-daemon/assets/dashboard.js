@@ -369,6 +369,7 @@ function togglePause() {
 }
 
 function select(id) {
+  closeComparison();   // leaving the side-by-side view for one agent's detail
   selected = id;
   lastDiff = null;
   document.getElementById("detail").hidden = false;
