@@ -564,3 +564,29 @@ async fn revoke_device_removes_it() {
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
     assert_eq!(state.devices.read().unwrap().devices.len(), 0);
 }
+
+#[tokio::test]
+async fn list_sessions_unsupported_type_returns_empty() {
+    let app = build_app(AppState::new());
+    let resp = app
+        .oneshot(get_request("/sessions?workspace=/tmp/x&type=gemini"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert!(json.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn adopt_rejects_blank_session_id() {
+    let app = build_app(AppState::new());
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/agents/adopt",
+            serde_json::json!({ "agent_type": "claude", "workspace": "/tmp/x", "session_id": "" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
