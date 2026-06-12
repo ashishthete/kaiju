@@ -590,3 +590,17 @@ async fn adopt_rejects_blank_session_id() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn adopt_rejects_session_id_with_shell_metachars() {
+    let app = build_app(AppState::new());
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/agents/adopt",
+            serde_json::json!({ "agent_type": "claude", "workspace": "/tmp/x", "session_id": "a; rm -rf ~" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}

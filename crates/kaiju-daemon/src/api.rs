@@ -518,6 +518,15 @@ async fn adopt_agent(
             "agent_type, workspace, and session_id are required",
         ));
     }
+    // Defense-in-depth: the session id is interpolated into a shell command, so
+    // restrict it to a safe character class (real CLI session ids are UUIDs).
+    if !req
+        .session_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(err(StatusCode::BAD_REQUEST, "invalid session_id"));
+    }
     let agent_type: AgentType = req.agent_type.parse().expect("infallible");
     let config = AgentConfig {
         agent_type,

@@ -234,7 +234,7 @@ pub(crate) fn list_workspace_sessions(workspace: &Path) -> Vec<SessionInfo> {
             })
         })
         .collect();
-    sessions.sort_by(|a, b| b.last_active_unix.cmp(&a.last_active_unix));
+    sessions.sort_by_key(|s| std::cmp::Reverse(s.last_active_unix));
     sessions
 }
 
