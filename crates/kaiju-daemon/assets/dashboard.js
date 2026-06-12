@@ -648,6 +648,7 @@ function openComparison(groupId) {
   compareGroup = groupId;
   compareIds = [];
   document.getElementById("compare-panel").hidden = false;
+  document.getElementById("cmp-verdict").hidden = true;
   renderComparison();
 }
 function closeComparison() {
@@ -739,4 +740,26 @@ async function adopt(encodedId) {
     refresh();
     select(agent.id);
   } catch (e) { alert("Adopt failed."); }
+}
+
+async function judgeComparison() {
+  if (!compareGroup) return;
+  const btn = document.getElementById("cmp-judge-btn");
+  const box = document.getElementById("cmp-verdict");
+  btn.disabled = true;
+  box.hidden = false;
+  box.innerHTML = '<span class="spinner"></span> Judging…';
+  try {
+    const res = await api("/compare/judge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group_id: compareGroup }),
+    });
+    if (!res.ok) { box.textContent = (await res.json()).error || "Judge failed."; btn.disabled = false; return; }
+    const d = await res.json();
+    const legend = (d.legend || []).map(function (l) { return esc(l.label) + " = " + esc(l.agent_type); }).join("  \xb7  ");
+    box.innerHTML = '<div class="cmp-legend">' + legend + '</div>' +
+      '<pre class="cmp-verdict-text">' + esc(d.verdict) + '</pre>';
+  } catch (e) { box.textContent = "Judge failed."; }
+  btn.disabled = false;
 }

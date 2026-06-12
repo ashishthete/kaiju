@@ -10,6 +10,7 @@ pub mod batch;
 pub mod dashboard;
 pub mod devices;
 pub mod files;
+pub mod judge;
 pub mod logstore;
 pub mod monitor;
 pub mod net;

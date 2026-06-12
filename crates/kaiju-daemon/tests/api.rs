@@ -667,3 +667,13 @@ async fn compare_rejects_blank_agent_type_entry() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn judge_rejects_group_with_fewer_than_two_runs() {
+    let app = build_app(AppState::new());
+    let resp = app
+        .oneshot(json_request("POST", "/compare/judge", serde_json::json!({ "group_id": "nope" })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
