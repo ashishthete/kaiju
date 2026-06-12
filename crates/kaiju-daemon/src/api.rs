@@ -56,6 +56,7 @@ pub fn routes() -> Router<AppState> {
         .route("/tasks/:id/cancel", post(cancel_task))
         .route("/sessions", get(list_sessions))
         .route("/agents/adopt", post(adopt_agent))
+        .route("/compare", post(compare))
         .route("/health", get(health))
 }
 
@@ -100,6 +101,14 @@ pub struct SessionsQuery {
     pub workspace: String,
     #[serde(rename = "type")]
     pub agent_type: String,
+}
+
+#[derive(Deserialize)]
+pub struct CompareRequest {
+    pub workspace: String,
+    pub prompt: String,
+    pub agent_types: Vec<String>,
+    pub model: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -155,6 +164,7 @@ pub struct AgentResponse {
     pub created_at: String,
     pub updated_at: String,
     pub metrics: MetricsResponse,
+    pub compare_group: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -186,6 +196,7 @@ impl From<&kaiju_core::agent::Agent> for AgentResponse {
                 tokens_used: agent.metrics.tokens_used,
                 estimated_cost_usd: agent.metrics.estimated_cost_usd,
             },
+            compare_group: agent.compare_group.clone(),
         }
     }
 }
@@ -547,6 +558,45 @@ async fn adopt_agent(
         Err(e) => {
             let code = match e {
                 NexusError::Adapter(_) => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            Err(err(code, &e.to_string()))
+        }
+    }
+}
+
+/// `POST /compare` — run one prompt across several CLIs, each isolated, grouped.
+async fn compare(
+    State(state): State<AppState>,
+    Json(req): Json<CompareRequest>,
+) -> impl IntoResponse {
+    use kaiju_core::NexusError;
+    if req.workspace.trim().is_empty() || req.prompt.trim().is_empty() || req.agent_types.is_empty() {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "workspace, prompt, and at least one agent_type are required",
+        ));
+    }
+    match crate::server::spawn_compare_group(
+        &state,
+        std::path::Path::new(&req.workspace),
+        &req.prompt,
+        &req.agent_types,
+        req.model,
+    ) {
+        Ok((group_id, ids)) => {
+            let agents: Vec<AgentResponse> = ids
+                .iter()
+                .filter_map(|id| state.store.get(id).map(|a| AgentResponse::from(&a)))
+                .collect();
+            Ok((
+                StatusCode::CREATED,
+                Json(serde_json::json!({ "group_id": group_id, "agents": agents })),
+            ))
+        }
+        Err(e) => {
+            let code = match e {
+                NexusError::Git(_) => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             Err(err(code, &e.to_string()))

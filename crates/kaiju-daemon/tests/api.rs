@@ -604,3 +604,52 @@ async fn adopt_rejects_session_id_with_shell_metachars() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn compare_rejects_empty_agent_types() {
+    let app = build_app(AppState::new());
+    let resp = app.oneshot(json_request(
+        "POST", "/compare",
+        serde_json::json!({ "workspace": "/tmp/x", "prompt": "do X", "agent_types": [] }),
+    )).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn compare_rejects_blank_prompt() {
+    let app = build_app(AppState::new());
+    let resp = app.oneshot(json_request(
+        "POST", "/compare",
+        serde_json::json!({ "workspace": "/tmp/x", "prompt": "", "agent_types": ["claude"] }),
+    )).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn compare_rejects_non_git_workspace() {
+    let dir = std::env::temp_dir().join("kaiju-compare-nongit");
+    std::fs::create_dir_all(&dir).unwrap();
+    let app = build_app(AppState::new());
+    let resp = app.oneshot(json_request(
+        "POST", "/compare",
+        serde_json::json!({ "workspace": dir.to_string_lossy(), "prompt": "do X", "agent_types": ["claude"] }),
+    )).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn agent_response_includes_compare_group_field() {
+    use kaiju_core::agent::{Agent, AgentConfig, AgentType};
+    let state = AppState::new();
+    let agent = Agent::new(AgentConfig {
+        agent_type: AgentType::Claude, model: None,
+        workspace: std::path::PathBuf::from("/tmp"), prompt: None, extra_args: vec![],
+    });
+    let id = agent.id.clone();
+    state.store.insert(agent);
+    let app = build_app(state);
+    let resp = app.oneshot(get_request(&format!("/agents/{id}"))).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert!(json.get("compare_group").is_some());
+}
