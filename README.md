@@ -65,6 +65,13 @@ kaiju remove <id>
 **Terminal** tab (type straight into the agent), plus per-row
 interrupt/stop/remove, a "New agent" form, and copy-ID buttons.
 
+**Adopt a session:** to bring an existing Claude Code conversation under Kaiju,
+click **Adopt session**, enter the workspace, pick a resumable session from the
+list, and Adopt — Kaiju resumes it (`claude --resume <id>`) inside a managed
+tmux session, so it shows up in the dashboard (and on paired devices). Close the
+original first so two clients don't drive one conversation. Claude only for now;
+token metrics don't attribute for adopted sessions yet.
+
 **Drag a file (or image) onto the terminal** to upload it into the agent's
 working dir (`.kaiju-uploads/`); Kaiju then types the saved path into the
 session, so the agent can read it — handy for images, which can't be streamed
@@ -203,6 +210,8 @@ marking any agent whose tmux session has since ended as stopped.
 | GET | `/health` | Liveness check. |
 | GET | `/agents` | List all agents. |
 | POST | `/agents` | Create an agent (`auto_start`, `isolate` opt-in). |
+| POST | `/agents/adopt` | Adopt a session: resume `session_id` in a managed tmux session. |
+| GET | `/sessions?workspace=&type=` | Resumable CLI sessions for a workspace (Claude). |
 | GET | `/agents/:id` | Get one agent. |
 | DELETE | `/agents/:id` | Stop (if running) and remove. |
 | POST | `/agents/:id/start` | Start a created agent. |

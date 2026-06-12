@@ -54,6 +54,8 @@ pub fn routes() -> Router<AppState> {
         .route("/tasks", get(list_tasks).post(create_task))
         .route("/tasks/:id", get(get_task))
         .route("/tasks/:id/cancel", post(cancel_task))
+        .route("/sessions", get(list_sessions))
+        .route("/agents/adopt", post(adopt_agent))
         .route("/health", get(health))
 }
 
@@ -83,6 +85,21 @@ pub struct CreateAgentRequest {
 pub struct SendInputRequest {
     /// Text to type into the agent's session, submitted with Enter.
     pub text: String,
+}
+
+#[derive(Deserialize)]
+pub struct AdoptRequest {
+    pub agent_type: String,
+    pub workspace: String,
+    pub session_id: String,
+    pub model: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct SessionsQuery {
+    pub workspace: String,
+    #[serde(rename = "type")]
+    pub agent_type: String,
 }
 
 #[derive(Deserialize)]
@@ -466,5 +483,73 @@ async fn delete_agent(State(state): State<AppState>, Path(id): Path<String>) -> 
     match state.store.remove(&id) {
         Some(_) => Ok(StatusCode::NO_CONTENT),
         None => Err(err(StatusCode::NOT_FOUND, "agent not found")),
+    }
+}
+
+/// `GET /sessions?workspace=<path>&type=<agent_type>` — resumable CLI sessions
+/// the adapter can discover for that workspace (empty if it can't).
+async fn list_sessions(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<SessionsQuery>,
+) -> impl IntoResponse {
+    let agent_type: AgentType = match q.agent_type.parse() {
+        Ok(t) => t,
+        Err(_) => return Json(Vec::<kaiju_core::adapter::SessionInfo>::new()),
+    };
+    let sessions = match state.adapters.get(&agent_type) {
+        Some(adapter) => adapter.list_sessions(std::path::Path::new(&q.workspace)),
+        None => Vec::new(),
+    };
+    Json(sessions)
+}
+
+/// `POST /agents/adopt` — create an agent that resumes an existing session by id.
+async fn adopt_agent(
+    State(state): State<AppState>,
+    Json(req): Json<AdoptRequest>,
+) -> impl IntoResponse {
+    use kaiju_core::NexusError;
+    if req.agent_type.trim().is_empty()
+        || req.workspace.trim().is_empty()
+        || req.session_id.trim().is_empty()
+    {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "agent_type, workspace, and session_id are required",
+        ));
+    }
+    // Defense-in-depth: the session id is interpolated into a shell command, so
+    // restrict it to a safe character class (real CLI session ids are UUIDs).
+    if !req
+        .session_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(err(StatusCode::BAD_REQUEST, "invalid session_id"));
+    }
+    // parse() is infallible: any non-blank string becomes a custom CLI type.
+    let agent_type: AgentType = req.agent_type.parse().expect("infallible");
+    // Apply global defaults (model, extra args) just like create_agent, so an
+    // adopted agent honors the same Preferences as a freshly-created one.
+    let defaults = state.settings.read().expect("settings lock").clone();
+    let config = defaults.apply(AgentConfig {
+        agent_type,
+        model: req.model,
+        workspace: PathBuf::from(&req.workspace),
+        prompt: None,
+        extra_args: vec![],
+    });
+    match crate::server::adopt_agent_internal(&state, &config, &req.session_id) {
+        Ok(id) => {
+            let agent = state.store.get(&id).unwrap();
+            Ok((StatusCode::CREATED, Json(AgentResponse::from(&agent))))
+        }
+        Err(e) => {
+            let code = match e {
+                NexusError::Adapter(_) => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            Err(err(code, &e.to_string()))
+        }
     }
 }

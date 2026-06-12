@@ -603,3 +603,51 @@ async function revokeDevice(id) {
   } catch (e) { alert("Revoke failed."); }
   loadDevices();
 }
+
+// --- Adopt an existing session ---
+
+function openAdopt() {
+  document.getElementById("ad-sessions").innerHTML = "";
+  const m = document.getElementById("adoptmodal");
+  if (typeof m.showModal === "function") m.showModal(); else m.setAttribute("open", "");
+}
+function closeAdopt() {
+  const m = document.getElementById("adoptmodal");
+  if (typeof m.close === "function") m.close(); else m.removeAttribute("open");
+}
+
+async function loadSessions() {
+  const ws = document.getElementById("ad-ws").value.trim();
+  const type = document.getElementById("ad-type").value;
+  const box = document.getElementById("ad-sessions");
+  if (!ws) { box.innerHTML = ""; return; }
+  box.innerHTML = '<div class="pop-hint">Loading…</div>';
+  try {
+    const res = await api("/sessions?workspace=" + encodeURIComponent(ws) + "&type=" + encodeURIComponent(type));
+    const sessions = await res.json();
+    if (!sessions.length) { box.innerHTML = '<div class="pop-hint">No resumable sessions found.</div>'; return; }
+    box.innerHTML = sessions.map(function (s) {
+      const when = timeAgo(new Date(s.last_active_unix * 1000).toISOString(), Date.now());
+      const label = esc(s.first_prompt || "(no prompt)") + " \xb7 " + when + " \xb7 " + esc(s.id.slice(0, 8));
+      return '<div class="device-row"><span>' + label +
+        '</span><button onclick="adopt(\'' + encodeURIComponent(s.id) + '\')">Adopt</button></div>';
+    }).join("");
+  } catch (e) { box.innerHTML = '<div class="pop-hint">Could not load sessions.</div>'; }
+}
+
+async function adopt(encodedId) {
+  const ws = document.getElementById("ad-ws").value.trim();
+  const type = document.getElementById("ad-type").value;
+  try {
+    const res = await api("/agents/adopt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agent_type: type, workspace: ws, session_id: decodeURIComponent(encodedId) }),
+    });
+    if (!res.ok) { alert("Adopt failed."); return; }
+    const agent = await res.json();
+    closeAdopt();
+    refresh();
+    select(agent.id);
+  } catch (e) { alert("Adopt failed."); }
+}

@@ -1,4 +1,16 @@
 use crate::agent::{AgentConfig, AgentStatus, AgentType};
+use serde::{Deserialize, Serialize};
+
+/// A resumable CLI session discovered for a workspace.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionInfo {
+    /// CLI session id (used to resume).
+    pub id: String,
+    /// Last-active time, Unix seconds (for sorting + "2h ago" display).
+    pub last_active_unix: i64,
+    /// First user prompt, truncated — a human-readable label.
+    pub first_prompt: String,
+}
 
 /// Output from parsing a CLI's terminal output.
 #[derive(Debug, Clone, Default)]
@@ -183,6 +195,22 @@ pub trait Adapter: Send + Sync {
     ///
     /// Default: the CLI has no resume mode (returns `None`).
     fn resume_command(&self, _config: &AgentConfig) -> Option<String> {
+        None
+    }
+
+    /// Resumable sessions this CLI has recorded for `workspace`, newest first.
+    /// Default: none (the CLI's session storage is unknown to Kaiju).
+    fn list_sessions(&self, _workspace: &std::path::Path) -> Vec<SessionInfo> {
+        Vec::new()
+    }
+
+    /// Command to resume a *specific* session by id (e.g. `claude --resume <id>`),
+    /// for adopting an existing conversation. Default: unsupported.
+    fn resume_session_command(
+        &self,
+        _config: &AgentConfig,
+        _session_id: &str,
+    ) -> Option<String> {
         None
     }
 
@@ -379,5 +407,24 @@ mod tests {
         let adapter = MockAdapter;
         let parsed = adapter.parse_output("working on something...");
         assert!(parsed.status.is_none());
+    }
+
+    #[test]
+    fn adapter_defaults_for_sessions_are_empty() {
+        struct Bare;
+        impl Adapter for Bare {
+            fn agent_type(&self) -> AgentType { AgentType::Claude }
+            fn build_command(&self, _c: &AgentConfig) -> String { String::new() }
+            fn parse_output(&self, _o: &str) -> ParsedOutput { ParsedOutput::default() }
+            fn display_name(&self) -> &str { "bare" }
+        }
+        let a = Bare;
+        let ws = std::path::Path::new("/tmp/x");
+        assert!(a.list_sessions(ws).is_empty());
+        let cfg = AgentConfig {
+            agent_type: AgentType::Claude, model: None,
+            workspace: ws.to_path_buf(), prompt: None, extra_args: vec![],
+        };
+        assert!(a.resume_session_command(&cfg, "abc").is_none());
     }
 }

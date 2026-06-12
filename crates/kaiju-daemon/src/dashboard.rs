@@ -203,6 +203,7 @@ pub const PAGE: &str = r#"<!doctype html>
   <div class="sub">Live fleet &middot; refreshing every 2s &middot; <span id="updated"></span></div>
   <div class="card toolbar">
     <button class="primary" onclick="toggleNew()">+ New agent</button>
+    <button onclick="openAdopt()">Adopt session</button>
     <input id="filter-text" class="filter" placeholder="Search agents…" oninput="applyFilter()" autocomplete="off">
     <select id="filter-status" class="filter" onchange="applyFilter()" title="Filter by status">
       <option value="all">All statuses</option>
@@ -304,6 +305,29 @@ pub const PAGE: &str = r#"<!doctype html>
       </div>
     </form>
   </dialog>
+
+  <dialog id="adoptmodal" class="modal" onclick="if(event.target===this)closeAdopt()">
+    <div class="modal-head">
+      <h2>Adopt a session</h2>
+      <button type="button" class="icon" onclick="closeAdopt()" title="Close">&times;</button>
+    </div>
+    <label class="field">
+      <span>Workspace path <em>*</em></span>
+      <input id="ad-ws" placeholder="/path/to/repo" autocomplete="off" onchange="loadSessions()">
+    </label>
+    <label class="field">
+      <span>Agent</span>
+      <select id="ad-type" onchange="loadSessions()">
+        <option value="claude">claude</option>
+      </select>
+    </label>
+    <div id="ad-sessions" class="device-list"></div>
+    <div class="note">Close the original session first so two clients do not drive one conversation.</div>
+    <div class="modal-actions">
+      <button type="button" onclick="closeAdopt()">Cancel</button>
+    </div>
+  </dialog>
+
   <div class="counts" id="counts"></div>
   <div class="card" style="overflow:hidden">
   <table>

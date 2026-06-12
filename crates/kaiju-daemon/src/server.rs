@@ -363,6 +363,39 @@ pub fn resume_agent_internal(state: &AppState, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Create an agent that resumes an existing CLI session by id, spawn it, and
+/// return its id. Like start, but the launch command is the adapter's
+/// resume-by-id command. Never creates a worktree (resume runs in place).
+pub fn adopt_agent_internal(
+    state: &AppState,
+    config: &kaiju_core::agent::AgentConfig,
+    session_id: &str,
+) -> Result<String> {
+    let adapter = state
+        .adapters
+        .get(&config.agent_type)
+        .ok_or_else(|| NexusError::Adapter(format!("no adapter for {}", config.agent_type)))?;
+
+    let command = adapter
+        .resume_session_command(config, session_id)
+        .ok_or_else(|| {
+            NexusError::Adapter(format!("{} does not support resume", config.agent_type))
+        })?;
+
+    let agent = kaiju_core::agent::Agent::new(config.clone());
+    let id = agent.id.clone();
+    let session_name = agent.session_name.clone();
+    state.store.insert(agent);
+
+    TmuxManager::create_session(
+        &session_name,
+        &config.workspace.display().to_string(),
+        &command,
+    )?;
+    state.store.mark_started(&id, chrono::Utc::now());
+    Ok(id)
+}
+
 /// Internal helper: stop an agent by killing its tmux session.
 pub fn stop_agent_internal(state: &AppState, id: &str) -> Result<()> {
     let agent = state
