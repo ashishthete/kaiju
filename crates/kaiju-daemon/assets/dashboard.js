@@ -158,6 +158,27 @@ function reFit() {
   }
 }
 
+// "Active client wins." The tmux window has ONE size shared by every viewer, so
+// when several devices watch the same agent the last one to POST its viewport
+// wins — a phone can shrink the pane and mangle the desktop's view. Reclaim it
+// for *this* browser whenever it becomes the one in use: re-fit, then re-post
+// the size UNCONDITIONALLY (unlike reFit, which skips when our own grid is
+// unchanged — the change was made by another device, not us). Debounced so
+// rapid focus/click bursts collapse into one request.
+let reassertTimer = null;
+function reassertSize() {
+  if (!term || activeTab !== "term" || !selected) return;
+  const d = fitDims(document.getElementById("d-term"));
+  if (d.cols !== term.cols || d.rows !== term.rows) {
+    try { term.resize(d.cols, d.rows); } catch (e) {}
+  }
+  syncBackendSize(d.cols, d.rows);
+}
+function scheduleReassert() {
+  clearTimeout(reassertTimer);
+  reassertTimer = setTimeout(reassertSize, 150);
+}
+
 // Resize the tmux pane to match the browser viewport so the capture fills the
 // panel and wraps at the right column. Best-effort.
 async function syncBackendSize(cols, rows) {
@@ -236,6 +257,19 @@ window.addEventListener("resize", () => {
   clearTimeout(termResizeTimer);
   termResizeTimer = setTimeout(reFit, 200);
 });
+
+// Reclaim the shared tmux pane for this browser whenever it becomes the active
+// one — the tab returns to the foreground, the window regains focus, or the user
+// clicks into the terminal. (#d-term is a stable element; the listener outlives
+// individual terminal sessions, and reassertSize no-ops when none is open.)
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") scheduleReassert();
+});
+window.addEventListener("focus", scheduleReassert);
+(function () {
+  const host = document.getElementById("d-term");
+  if (host) host.addEventListener("mousedown", scheduleReassert);
+})();
 
 function closeTerminal() {
   if (ws) { try { ws.close(); } catch (e) {} ws = null; }
