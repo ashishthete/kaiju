@@ -105,6 +105,9 @@ pub struct Agent {
     /// of an interactive tmux session.
     #[serde(default)]
     pub batch: bool,
+    /// Groups agents launched together by "Compare task" (a shared run id).
+    #[serde(default)]
+    pub compare_group: Option<String>,
     pub created_at: DateTime<Utc>,
     /// Set when the agent's CLI process is actually launched. `None` until started.
     pub started_at: Option<DateTime<Utc>>,
@@ -130,6 +133,7 @@ impl Agent {
             isolate: false,
             worktree_path: None,
             batch: false,
+            compare_group: None,
             created_at: now,
             started_at: None,
             updated_at: now,
@@ -304,5 +308,22 @@ mod tests {
 
         assert_eq!(deserialized.agent_type, AgentType::Gemini);
         assert_eq!(deserialized.model, Some("pro".to_string()));
+    }
+
+    #[test]
+    fn new_agent_has_no_compare_group_and_roundtrips() {
+        let agent = Agent::new(AgentConfig {
+            agent_type: AgentType::Claude,
+            model: None,
+            workspace: std::path::PathBuf::from("/tmp"),
+            prompt: None,
+            extra_args: vec![],
+        });
+        assert!(agent.compare_group.is_none());
+        let mut g = agent.clone();
+        g.compare_group = Some("grp-1".to_string());
+        let json = serde_json::to_string(&g).unwrap();
+        let back: Agent = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.compare_group.as_deref(), Some("grp-1"));
     }
 }

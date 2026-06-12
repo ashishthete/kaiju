@@ -9,6 +9,7 @@ let lastAgents = [];      // most recent fetch, so filtering re-renders without 
 let token = localStorage.getItem("kaiju_token") || "";
 let term = null, ws = null, activeTab = "term";
 let paused = false, pollTimer = null;
+let compareGroup = null;
 
 let notifyOn = localStorage.getItem("kaiju_notify") === "1";
 
@@ -342,6 +343,7 @@ function render(agents) {
         <button title="Interrupt" onclick="rowAct('${a.id}','interrupt')">⎋</button>
         <button title="Stop" onclick="rowAct('${a.id}','stop')">■</button>
         <button title="Remove" onclick="removeAgent('${a.id}')">✕</button>
+        ${a.compare_group ? '<button class="pill" title="Open comparison" onclick="event.stopPropagation();openComparison(\'' + a.compare_group + '\')">compare</button>' : ''}
       </td>
     </tr>`;
   }).join("");
@@ -367,6 +369,7 @@ function togglePause() {
 }
 
 function select(id) {
+  closeComparison();   // leaving the side-by-side view for one agent's detail
   selected = id;
   lastDiff = null;
   document.getElementById("detail").hidden = false;
@@ -516,9 +519,11 @@ function copyId(id) {
 async function refresh() {
   try {
     const res = await api("/agents");
-    render(await res.json());
+    const agents = await res.json();
+    render(agents);
     document.getElementById("updated").textContent = "updated " + new Date().toLocaleTimeString();
     refreshDetail();
+    if (compareGroup) renderComparison(agents);
   } catch (e) {
     document.getElementById("updated").textContent = "daemon unreachable";
   }
@@ -602,6 +607,90 @@ async function revokeDevice(id) {
     if (!res.ok) alert("Revoke failed.");
   } catch (e) { alert("Revoke failed."); }
   loadDevices();
+}
+
+// --- Compare task across CLIs ---
+
+function openCompare() {
+  const m = document.getElementById("comparemodal");
+  if (typeof m.showModal === "function") m.showModal(); else m.setAttribute("open", "");
+}
+function closeCompare() {
+  const m = document.getElementById("comparemodal");
+  if (typeof m.close === "function") m.close(); else m.removeAttribute("open");
+}
+
+async function submitCompare() {
+  const ws = document.getElementById("cmp-ws").value.trim();
+  const prompt = document.getElementById("cmp-prompt").value.trim();
+  const types = Array.from(document.querySelectorAll(".cmp-type:checked")).map(c => c.value);
+  if (!ws || !prompt || !types.length) { alert("Workspace, prompt, and at least one CLI are required."); return; }
+  try {
+    const res = await api("/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspace: ws, prompt: prompt, agent_types: types }),
+    });
+    if (!res.ok) { alert((await res.json()).error || "Compare failed."); return; }
+    const data = await res.json();
+    closeCompare();
+    refresh();
+    openComparison(data.group_id);
+  } catch (e) { alert("Compare failed."); }
+}
+
+// --- Side-by-side comparison view ---
+
+let compareIds = [];   // ids of the columns currently rendered (skeleton key)
+
+function openComparison(groupId) {
+  closeDetail();   // leaving any single-agent detail (and its terminal WS)
+  compareGroup = groupId;
+  compareIds = [];
+  document.getElementById("compare-panel").hidden = false;
+  renderComparison();
+}
+function closeComparison() {
+  compareGroup = null;
+  compareIds = [];
+  document.getElementById("compare-panel").hidden = true;
+}
+
+// Render/refresh the comparison. Accepts the fleet `agents` from the poll so it
+// doesn't re-fetch /agents; falls back to its own fetch for the one-shot open.
+// Column skeletons are rebuilt only when the membership changes — otherwise we
+// update status + diff in place, so the panes don't flash "Loading…" each tick.
+async function renderComparison(agents) {
+  if (!compareGroup) return;
+  if (!agents) {
+    try { agents = await (await api("/agents")).json(); } catch (e) { return; }
+  }
+  const group = agents.filter(a => a.compare_group === compareGroup);
+  if (!group.length) { closeComparison(); return; }
+  document.getElementById("cmp-prompt-label").textContent = group[0].prompt || "";
+  const ids = group.map(a => a.id);
+  if (ids.join(",") !== compareIds.join(",")) {
+    compareIds = ids;
+    document.getElementById("cmp-cols").innerHTML = group.map(function (a) {
+      return '<div class="cmp-col" data-id="' + a.id + '">' +
+        '<div class="cmp-col-head">' + esc(a.agent_type) +
+        ' <span class="status s-' + a.status + '" id="cmp-st-' + a.id + '">' + esc(statusLabel(a.status)) + '</span>' +
+        '<span class="grow"></span>' +
+        '<button onclick="select(\'' + a.id + '\')">Open</button></div>' +
+        '<pre class="cmp-diff" id="cmp-diff-' + a.id + '">Loading…</pre></div>';
+    }).join("");
+  } else {
+    group.forEach(function (a) {
+      const st = document.getElementById("cmp-st-" + a.id);
+      if (st) { st.className = "status s-" + a.status; st.textContent = statusLabel(a.status); }
+    });
+  }
+  group.forEach(function (a) {
+    api("/agents/" + a.id + "/diff").then(function (r) { return r.json(); }).then(function (d) {
+      const pane = document.getElementById("cmp-diff-" + a.id);
+      if (pane) pane.innerHTML = d.diff ? renderDiff(d.diff) : "(no changes)";
+    }).catch(function () {});
+  });
 }
 
 // --- Adopt an existing session ---

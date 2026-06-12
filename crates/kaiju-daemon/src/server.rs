@@ -396,6 +396,47 @@ pub fn adopt_agent_internal(
     Ok(id)
 }
 
+/// Launch one isolated agent per CLI type, all running `prompt` in `workspace`,
+/// tagged with a shared compare-group id. Returns (group_id, agent ids).
+/// Comparison needs isolation (each run diffs its own worktree), so a non-git
+/// workspace is rejected up front. Per-agent start is best-effort: a CLI that
+/// fails to launch surfaces as that agent's error, not a whole-group failure.
+pub fn spawn_compare_group(
+    state: &AppState,
+    workspace: &std::path::Path,
+    prompt: &str,
+    agent_types: &[String],
+    model: Option<String>,
+) -> Result<(String, Vec<String>)> {
+    if !WorktreeManager::is_git_repo(workspace) {
+        return Err(NexusError::Git(format!(
+            "compare requires a git workspace: {}",
+            workspace.display()
+        )));
+    }
+    let group_id = uuid::Uuid::new_v4().to_string();
+    let defaults = state.settings.read().expect("settings lock").clone();
+    let mut ids = Vec::new();
+    for type_str in agent_types {
+        let agent_type: kaiju_core::agent::AgentType = type_str.parse().expect("infallible");
+        let config = defaults.apply(kaiju_core::agent::AgentConfig {
+            agent_type,
+            model: model.clone(),
+            workspace: workspace.to_path_buf(),
+            prompt: Some(prompt.to_string()),
+            extra_args: vec![],
+        });
+        let mut agent = kaiju_core::agent::Agent::new(config);
+        agent.isolate = true;
+        agent.compare_group = Some(group_id.clone());
+        let id = agent.id.clone();
+        state.store.insert(agent);
+        let _ = start_agent_internal(state, &id);
+        ids.push(id);
+    }
+    Ok((group_id, ids))
+}
+
 /// Internal helper: stop an agent by killing its tmux session.
 pub fn stop_agent_internal(state: &AppState, id: &str) -> Result<()> {
     let agent = state
