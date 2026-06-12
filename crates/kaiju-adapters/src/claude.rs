@@ -1,6 +1,6 @@
 use kaiju_core::adapter::{
     controlling_prompt_line, ends_with_selection_menu, last_non_empty_line, looks_like_prompt,
-    Adapter, ParsedOutput,
+    Adapter, ParsedOutput, SessionInfo,
 };
 use kaiju_core::agent::{AgentConfig, AgentStatus, AgentType};
 use regex::Regex;
@@ -136,6 +136,29 @@ impl Adapter for ClaudeAdapter {
 
     fn display_name(&self) -> &str {
         "Claude Code"
+    }
+
+    fn list_sessions(&self, workspace: &std::path::Path) -> Vec<SessionInfo> {
+        crate::claude_transcript::list_workspace_sessions(workspace)
+    }
+
+    fn resume_session_command(
+        &self,
+        config: &AgentConfig,
+        session_id: &str,
+    ) -> Option<String> {
+        let bin = crate::binary::agent_binary("KAIJU_CLAUDE_BIN", "claude");
+        let mut cmd = format!(
+            "cd {} && {bin} --resume {session_id}",
+            config.workspace.display()
+        );
+        if let Some(model) = config.model.as_deref().or(self.default_model()) {
+            cmd.push_str(&format!(" --model {model}"));
+        }
+        for arg in &config.extra_args {
+            cmd.push_str(&format!(" {arg}"));
+        }
+        Some(cmd)
     }
 }
 
@@ -317,5 +340,20 @@ mod tests {
         assert!(parsed.status.is_none());
         assert!(parsed.tokens_used.is_none());
         assert!(parsed.estimated_cost_usd.is_none());
+    }
+
+    #[test]
+    fn resume_session_command_uses_resume_flag_and_id() {
+        let cfg = AgentConfig {
+            agent_type: AgentType::Claude,
+            model: Some("claude-opus-4-8".to_string()),
+            workspace: std::path::PathBuf::from("/tmp/repo"),
+            prompt: None,
+            extra_args: vec![],
+        };
+        let cmd = ClaudeAdapter.resume_session_command(&cfg, "abc123").unwrap();
+        assert!(cmd.contains("cd /tmp/repo &&"));
+        assert!(cmd.contains("--resume abc123"));
+        assert!(cmd.contains("--model claude-opus-4-8"));
     }
 }
