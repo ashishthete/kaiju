@@ -72,6 +72,11 @@ tmux session, so it shows up in the dashboard (and on paired devices). Close the
 original first so two clients don't drive one conversation. Claude only for now;
 token metrics don't attribute for adopted sessions yet.
 
+**Compare across CLIs:** click **Compare task**, enter a workspace + prompt, and
+tick the CLIs to run. Each runs the same prompt in its own isolated git worktree;
+a comparison view shows the runs side by side with their live diffs. Open any run
+to drive its terminal.
+
 **Drag a file (or image) onto the terminal** to upload it into the agent's
 working dir (`.kaiju-uploads/`); Kaiju then types the saved path into the
 session, so the agent can read it — handy for images, which can't be streamed
@@ -212,6 +217,7 @@ marking any agent whose tmux session has since ended as stopped.
 | POST | `/agents` | Create an agent (`auto_start`, `isolate` opt-in). |
 | POST | `/agents/adopt` | Adopt a session: resume `session_id` in a managed tmux session. |
 | GET | `/sessions?workspace=&type=` | Resumable CLI sessions for a workspace (Claude). |
+| POST | `/compare` | Run one prompt across CLIs (isolated), grouped for side-by-side review. |
 | GET | `/agents/:id` | Get one agent. |
 | DELETE | `/agents/:id` | Stop (if running) and remove. |
 | POST | `/agents/:id/start` | Start a created agent. |
