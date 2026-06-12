@@ -75,7 +75,8 @@ token metrics don't attribute for adopted sessions yet.
 **Compare across CLIs:** click **Compare task**, enter a workspace + prompt, and
 tick the CLIs to run. Each runs the same prompt in its own isolated git worktree;
 a comparison view shows the runs side by side with their live diffs. Open any run
-to drive its terminal.
+to drive its terminal. Hit **Judge** to have a local `claude -p` rank the runs
+(anonymized A/B/C) with a winner + rationale — no API key needed.
 
 **Drag a file (or image) onto the terminal** to upload it into the agent's
 working dir (`.kaiju-uploads/`); Kaiju then types the saved path into the
@@ -218,6 +219,7 @@ marking any agent whose tmux session has since ended as stopped.
 | POST | `/agents/adopt` | Adopt a session: resume `session_id` in a managed tmux session. |
 | GET | `/sessions?workspace=&type=` | Resumable CLI sessions for a workspace (Claude). |
 | POST | `/compare` | Run one prompt across CLIs (isolated), grouped for side-by-side review. |
+| POST | `/compare/judge` | LLM-rank a compare group's runs (anonymized) via local `claude -p`. |
 | GET | `/agents/:id` | Get one agent. |
 | DELETE | `/agents/:id` | Stop (if running) and remove. |
 | POST | `/agents/:id/start` | Start a created agent. |
