@@ -527,14 +527,18 @@ async fn adopt_agent(
     {
         return Err(err(StatusCode::BAD_REQUEST, "invalid session_id"));
     }
+    // parse() is infallible: any non-blank string becomes a custom CLI type.
     let agent_type: AgentType = req.agent_type.parse().expect("infallible");
-    let config = AgentConfig {
+    // Apply global defaults (model, extra args) just like create_agent, so an
+    // adopted agent honors the same Preferences as a freshly-created one.
+    let defaults = state.settings.read().expect("settings lock").clone();
+    let config = defaults.apply(AgentConfig {
         agent_type,
         model: req.model,
         workspace: PathBuf::from(&req.workspace),
         prompt: None,
         extra_args: vec![],
-    };
+    });
     match crate::server::adopt_agent_internal(&state, &config, &req.session_id) {
         Ok(id) => {
             let agent = state.store.get(&id).unwrap();

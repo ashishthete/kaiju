@@ -319,8 +319,6 @@ pub const PAGE: &str = r#"<!doctype html>
       <span>Agent</span>
       <select id="ad-type" onchange="loadSessions()">
         <option value="claude">claude</option>
-        <option value="codex">codex</option>
-        <option value="gemini">gemini</option>
       </select>
     </label>
     <div id="ad-sessions" class="device-list"></div>
