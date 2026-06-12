@@ -649,6 +649,7 @@ function openComparison(groupId) {
   compareIds = [];
   document.getElementById("compare-panel").hidden = false;
   document.getElementById("cmp-verdict").hidden = true;
+  document.getElementById("cmp-test-cmd").value = localStorage.getItem("kaiju_test_cmd") || "";
   renderComparison();
 }
 function closeComparison() {
@@ -746,14 +747,16 @@ async function judgeComparison() {
   if (!compareGroup) return;
   const btn = document.getElementById("cmp-judge-btn");
   const box = document.getElementById("cmp-verdict");
+  const testCmd = document.getElementById("cmp-test-cmd").value.trim();
+  localStorage.setItem("kaiju_test_cmd", testCmd);
   btn.disabled = true;
   box.hidden = false;
-  box.innerHTML = '<span class="spinner"></span> Judging…';
+  box.innerHTML = '<span class="spinner"></span> ' + (testCmd ? "Running tests + judging…" : "Judging…");
   try {
     const res = await api("/compare/judge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ group_id: compareGroup }),
+      body: JSON.stringify({ group_id: compareGroup, test_cmd: testCmd || null }),
     });
     if (!res.ok) { box.textContent = (await res.json()).error || "Judge failed."; btn.disabled = false; return; }
     const d = await res.json();

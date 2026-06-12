@@ -115,6 +115,8 @@ pub struct CompareRequest {
 #[derive(Deserialize)]
 pub struct JudgeRequest {
     pub group_id: String,
+    #[serde(default)]
+    pub test_cmd: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -631,22 +633,21 @@ async fn compare_judge(
     }
     let task = agents[0].prompt.clone().unwrap_or_default();
     let workspace = agents[0].workspace.clone();
-    let candidates: Vec<crate::judge::Candidate> = agents
-        .iter()
-        .enumerate()
-        .map(|(i, a)| {
-            let diff = crate::worktree::WorktreeManager::diff(a.run_dir()).unwrap_or_default();
-            crate::judge::Candidate {
-                label: crate::judge::label_for(i),
-                agent_type: a.agent_type.to_string(),
-                diff: if diff.trim().is_empty() {
-                    "(no changes)".to_string()
-                } else {
-                    diff
-                },
-            }
-        })
-        .collect();
+    let test_cmd = req.test_cmd.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let mut candidates: Vec<crate::judge::Candidate> = Vec::new();
+    for (i, a) in agents.iter().enumerate() {
+        let diff = crate::worktree::WorktreeManager::diff(a.run_dir()).unwrap_or_default();
+        let test = match test_cmd {
+            Some(cmd) => Some(crate::judge::run_tests(a.run_dir(), cmd).await),
+            None => None,
+        };
+        candidates.push(crate::judge::Candidate {
+            label: crate::judge::label_for(i),
+            agent_type: a.agent_type.to_string(),
+            diff: if diff.trim().is_empty() { "(no changes)".to_string() } else { diff },
+            test,
+        });
+    }
     let legend: Vec<serde_json::Value> = agents
         .iter()
         .enumerate()

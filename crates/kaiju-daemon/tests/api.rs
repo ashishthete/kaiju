@@ -677,3 +677,19 @@ async fn judge_rejects_group_with_fewer_than_two_runs() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn judge_accepts_test_cmd_field() {
+    // The optional test_cmd must deserialize cleanly; with an unknown group the
+    // outcome is still the <2-runs 400 (proves the field round-trips).
+    let app = build_app(AppState::new());
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/compare/judge",
+            serde_json::json!({ "group_id": "nope", "test_cmd": "echo ok" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}

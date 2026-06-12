@@ -5,6 +5,13 @@ use std::path::Path;
 
 use kaiju_core::{NexusError, Result};
 
+/// Outcome of running the project's test command in a candidate's worktree.
+pub struct TestSummary {
+    pub passed: bool,
+    /// Short human line (exit status + tail of output) for the judge prompt.
+    pub summary: String,
+}
+
 /// One anonymized candidate the judge sees.
 pub struct Candidate {
     pub label: String,
@@ -12,6 +19,8 @@ pub struct Candidate {
     /// (that would defeat the anonymization).
     pub agent_type: String,
     pub diff: String,
+    /// Test outcome, when a test command was supplied. `None` = diff-only judging.
+    pub test: Option<TestSummary>,
 }
 
 /// Per-candidate diff is capped so the prompt stays within argv limits.
@@ -34,14 +43,20 @@ pub fn label_for(mut index: usize) -> String {
 /// name), includes the task, and truncates each diff.
 pub fn build_prompt(task: &str, candidates: &[Candidate]) -> String {
     let mut s = String::from(
-        "You are judging candidate solutions to a coding task. Rank them best to \
-         worst on correctness, completeness, and code quality. Give a one-line \
-         rationale for each candidate, then name the winner. Be concise.\n\n## Task\n",
+        "You are judging candidate solutions to a coding task. When test results \
+         are given, weigh them heavily — a candidate whose tests pass beats one \
+         that only looks cleaner. Rank them best to worst on test results, \
+         correctness, completeness, and code quality. Give a one-line rationale \
+         for each candidate, then name the winner. Be concise.\n\n## Task\n",
     );
     s.push_str(task);
     s.push_str("\n\n## Candidates\n");
     for c in candidates {
         s.push_str(&format!("\n### Candidate {}\n", c.label));
+        if let Some(t) = &c.test {
+            let verdict = if t.passed { "PASS" } else { "FAIL" };
+            s.push_str(&format!("Tests: {verdict} — {}\n", t.summary));
+        }
         let truncated: String = c.diff.chars().take(DIFF_CAP_CHARS).collect();
         s.push_str(&truncated);
         if c.diff.chars().count() > DIFF_CAP_CHARS {
@@ -81,6 +96,34 @@ pub async fn run_judge(workspace: &Path, prompt: &str) -> Result<String> {
     Ok(text)
 }
 
+/// Run `cmd` (via `sh -c`) in `workdir` with a timeout, capturing pass/fail and
+/// a tail of the combined output for the judge. Best-effort: a spawn failure or
+/// timeout is reported as a failing test with the reason.
+pub async fn run_tests(workdir: &Path, cmd: &str) -> TestSummary {
+    let fut = tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .current_dir(workdir)
+        .output();
+    match tokio::time::timeout(std::time::Duration::from_secs(300), fut).await {
+        Ok(Ok(out)) => {
+            let mut combined = String::from_utf8_lossy(&out.stdout).to_string();
+            combined.push_str(&String::from_utf8_lossy(&out.stderr));
+            let tail: String = {
+                let chars: Vec<char> = combined.chars().collect();
+                let start = chars.len().saturating_sub(1500);
+                chars[start..].iter().collect()
+            };
+            TestSummary {
+                passed: out.status.success(),
+                summary: format!("exit {}\n{}", out.status.code().unwrap_or(-1), tail.trim()),
+            }
+        }
+        Ok(Err(e)) => TestSummary { passed: false, summary: format!("could not run tests: {e}") },
+        Err(_) => TestSummary { passed: false, summary: "tests timed out (300s)".to_string() },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,8 +139,8 @@ mod tests {
     #[test]
     fn prompt_is_anonymized_and_has_task() {
         let cands = vec![
-            Candidate { label: "A".into(), agent_type: "claude".into(), diff: "+ fn a() {}".into() },
-            Candidate { label: "B".into(), agent_type: "codex".into(), diff: "+ fn b() {}".into() },
+            Candidate { label: "A".into(), agent_type: "claude".into(), diff: "+ fn a() {}".into(), test: None },
+            Candidate { label: "B".into(), agent_type: "codex".into(), diff: "+ fn b() {}".into(), test: None },
         ];
         let p = build_prompt("add a function", &cands);
         assert!(p.contains("add a function"));
@@ -110,8 +153,19 @@ mod tests {
     #[test]
     fn long_diff_is_truncated() {
         let big = "x".repeat(DIFF_CAP_CHARS + 500);
-        let cands = vec![Candidate { label: "A".into(), agent_type: "claude".into(), diff: big }];
+        let cands = vec![Candidate { label: "A".into(), agent_type: "claude".into(), diff: big, test: None }];
         let p = build_prompt("t", &cands);
         assert!(p.contains("…[truncated]"));
+    }
+
+    #[test]
+    fn prompt_includes_test_outcome_when_present() {
+        let cands = vec![Candidate {
+            label: "A".into(), agent_type: "claude".into(), diff: "+x".into(),
+            test: Some(TestSummary { passed: true, summary: "exit 0 (ok)".into() }),
+        }];
+        let p = build_prompt("t", &cands);
+        assert!(p.contains("Tests: PASS"));
+        assert!(p.contains("exit 0 (ok)"));
     }
 }
