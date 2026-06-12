@@ -644,6 +644,7 @@ async fn compare_judge(
                 } else {
                     diff
                 },
+                test: None,
             }
         })
         .collect();
