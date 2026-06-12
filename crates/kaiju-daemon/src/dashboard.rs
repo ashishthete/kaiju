@@ -171,6 +171,8 @@ pub const PAGE: &str = r#"<!doctype html>
   details.advanced summary { cursor: pointer; color: var(--muted); font-size: .82rem; }
   details.advanced > .field, details.advanced > .check { margin-top: .7rem; }
   .check { display: flex; align-items: center; gap: .45rem; font-size: .85rem; color: var(--muted); }
+  .check input { width: auto; flex: none; }
+  .cmp-types { display: flex; flex-wrap: wrap; gap: 1.1rem; }
   .modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .3rem; }
   .icon { padding: .15rem .5rem; font-size: 1.1rem; line-height: 1; }
 
@@ -319,6 +321,7 @@ pub const PAGE: &str = r#"<!doctype html>
   </dialog>
 
   <dialog id="adoptmodal" class="modal" onclick="if(event.target===this)closeAdopt()">
+    <form onsubmit="return false">
     <div class="modal-head">
       <h2>Adopt a session</h2>
       <button type="button" class="icon" onclick="closeAdopt()" title="Close">&times;</button>
@@ -338,9 +341,11 @@ pub const PAGE: &str = r#"<!doctype html>
     <div class="modal-actions">
       <button type="button" onclick="closeAdopt()">Cancel</button>
     </div>
+    </form>
   </dialog>
 
   <dialog id="comparemodal" class="modal" onclick="if(event.target===this)closeCompare()">
+    <form onsubmit="event.preventDefault();submitCompare()">
     <div class="modal-head">
       <h2>Compare task across CLIs</h2>
       <button type="button" class="icon" onclick="closeCompare()" title="Close">&times;</button>
@@ -355,15 +360,18 @@ pub const PAGE: &str = r#"<!doctype html>
     </label>
     <div class="field">
       <span>Run on</span>
-      <label class="check"><input type="checkbox" class="cmp-type" value="claude" checked> claude</label>
-      <label class="check"><input type="checkbox" class="cmp-type" value="codex"> codex</label>
-      <label class="check"><input type="checkbox" class="cmp-type" value="gemini"> gemini</label>
+      <div class="cmp-types">
+        <label class="check"><input type="checkbox" class="cmp-type" value="claude" checked> claude</label>
+        <label class="check"><input type="checkbox" class="cmp-type" value="codex"> codex</label>
+        <label class="check"><input type="checkbox" class="cmp-type" value="gemini"> gemini</label>
+      </div>
     </div>
     <div class="note">Each CLI runs the same prompt in its own isolated git worktree, so they don't clobber each other.</div>
     <div class="modal-actions">
       <button type="button" onclick="closeCompare()">Cancel</button>
-      <button type="button" class="primary" onclick="submitCompare()">Run comparison</button>
+      <button type="submit" class="primary">Run comparison</button>
     </div>
+    </form>
   </dialog>
 
   <div class="counts" id="counts"></div>
