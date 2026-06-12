@@ -209,6 +209,11 @@ pub const PAGE: &str = r#"<!doctype html>
   .cmp-col-head .grow { flex: 1; }
   .cmp-diff { margin: 0; padding: 8px 10px; max-height: 60vh; overflow: auto;
               font-family: ui-monospace, monospace; font-size: 12px; white-space: pre; }
+  #cmp-verdict { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--border);
+                 border-radius: 8px; background: var(--surface-2); }
+  #cmp-verdict[hidden] { display: none; }
+  .cmp-legend { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .cmp-verdict-text { margin: 0; white-space: pre-wrap; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -419,8 +424,10 @@ pub const PAGE: &str = r#"<!doctype html>
       <span class="id">Comparison</span>
       <span class="path" id="cmp-prompt-label" title=""></span>
       <span class="grow"></span>
+      <button id="cmp-judge-btn" onclick="judgeComparison()">Judge</button>
       <button onclick="closeComparison()">Close</button>
     </div>
+    <div id="cmp-verdict" hidden></div>
     <div id="cmp-cols" class="cmp-cols"></div>
   </div>
 
