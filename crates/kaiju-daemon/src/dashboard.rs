@@ -424,6 +424,7 @@ pub const PAGE: &str = r#"<!doctype html>
       <span class="id">Comparison</span>
       <span class="path" id="cmp-prompt-label" title=""></span>
       <span class="grow"></span>
+      <input id="cmp-test-cmd" placeholder="test cmd (optional, e.g. cargo test)" title="Run this in each worktree and feed pass/fail to the judge" style="flex:0 1 18rem">
       <button id="cmp-judge-btn" onclick="judgeComparison()">Judge</button>
       <button onclick="closeComparison()">Close</button>
     </div>
