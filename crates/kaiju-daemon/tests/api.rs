@@ -653,3 +653,17 @@ async fn agent_response_includes_compare_group_field() {
     let json = body_json(resp).await;
     assert!(json.get("compare_group").is_some());
 }
+
+#[tokio::test]
+async fn compare_rejects_blank_agent_type_entry() {
+    let app = build_app(AppState::new());
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/compare",
+            serde_json::json!({ "workspace": "/tmp/x", "prompt": "do X", "agent_types": ["claude", ""] }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}

@@ -519,10 +519,11 @@ function copyId(id) {
 async function refresh() {
   try {
     const res = await api("/agents");
-    render(await res.json());
+    const agents = await res.json();
+    render(agents);
     document.getElementById("updated").textContent = "updated " + new Date().toLocaleTimeString();
     refreshDetail();
-    if (compareGroup) renderComparison();
+    if (compareGroup) renderComparison(agents);
   } catch (e) {
     document.getElementById("updated").textContent = "daemon unreachable";
   }
@@ -640,33 +641,50 @@ async function submitCompare() {
 
 // --- Side-by-side comparison view ---
 
+let compareIds = [];   // ids of the columns currently rendered (skeleton key)
+
 function openComparison(groupId) {
+  closeDetail();   // leaving any single-agent detail (and its terminal WS)
   compareGroup = groupId;
-  document.getElementById("detail").hidden = true;
+  compareIds = [];
   document.getElementById("compare-panel").hidden = false;
   renderComparison();
 }
 function closeComparison() {
   compareGroup = null;
+  compareIds = [];
   document.getElementById("compare-panel").hidden = true;
 }
 
-async function renderComparison() {
+// Render/refresh the comparison. Accepts the fleet `agents` from the poll so it
+// doesn't re-fetch /agents; falls back to its own fetch for the one-shot open.
+// Column skeletons are rebuilt only when the membership changes — otherwise we
+// update status + diff in place, so the panes don't flash "Loading…" each tick.
+async function renderComparison(agents) {
   if (!compareGroup) return;
-  let agents;
-  try { agents = await (await api("/agents")).json(); } catch (e) { return; }
+  if (!agents) {
+    try { agents = await (await api("/agents")).json(); } catch (e) { return; }
+  }
   const group = agents.filter(a => a.compare_group === compareGroup);
   if (!group.length) { closeComparison(); return; }
   document.getElementById("cmp-prompt-label").textContent = group[0].prompt || "";
-  const cols = document.getElementById("cmp-cols");
-  cols.innerHTML = group.map(function (a) {
-    return '<div class="cmp-col" data-id="' + a.id + '">' +
-      '<div class="cmp-col-head">' + esc(a.agent_type) +
-      ' <span class="status s-' + a.status + '">' + esc(statusLabel(a.status)) + '</span>' +
-      '<span class="grow"></span>' +
-      '<button onclick="select(\'' + a.id + '\')">Open</button></div>' +
-      '<pre class="cmp-diff" id="cmp-diff-' + a.id + '">Loading…</pre></div>';
-  }).join("");
+  const ids = group.map(a => a.id);
+  if (ids.join(",") !== compareIds.join(",")) {
+    compareIds = ids;
+    document.getElementById("cmp-cols").innerHTML = group.map(function (a) {
+      return '<div class="cmp-col" data-id="' + a.id + '">' +
+        '<div class="cmp-col-head">' + esc(a.agent_type) +
+        ' <span class="status s-' + a.status + '" id="cmp-st-' + a.id + '">' + esc(statusLabel(a.status)) + '</span>' +
+        '<span class="grow"></span>' +
+        '<button onclick="select(\'' + a.id + '\')">Open</button></div>' +
+        '<pre class="cmp-diff" id="cmp-diff-' + a.id + '">Loading…</pre></div>';
+    }).join("");
+  } else {
+    group.forEach(function (a) {
+      const st = document.getElementById("cmp-st-" + a.id);
+      if (st) { st.className = "status s-" + a.status; st.textContent = statusLabel(a.status); }
+    });
+  }
   group.forEach(function (a) {
     api("/agents/" + a.id + "/diff").then(function (r) { return r.json(); }).then(function (d) {
       const pane = document.getElementById("cmp-diff-" + a.id);

@@ -201,12 +201,12 @@ pub const PAGE: &str = r#"<!doctype html>
 
   .cmp-cols { display: flex; gap: 12px; overflow-x: auto; padding: 4px 0; }
   .cmp-col { flex: 1 0 320px; min-width: 320px; display: flex; flex-direction: column;
-             border: 1px solid #2a2f3a; border-radius: 8px; overflow: hidden; }
+             border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .cmp-col-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-                  background: #161b22; font-weight: 600; }
+                  background: var(--surface-2); font-weight: 600; }
   .cmp-col-head .grow { flex: 1; }
   .cmp-diff { margin: 0; padding: 8px 10px; max-height: 60vh; overflow: auto;
-              font-family: monospace; font-size: 12px; white-space: pre; }
+              font-family: ui-monospace, monospace; font-size: 12px; white-space: pre; }
 </style>
 </head>
 <body>

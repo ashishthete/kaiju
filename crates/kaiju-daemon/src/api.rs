@@ -571,10 +571,14 @@ async fn compare(
     Json(req): Json<CompareRequest>,
 ) -> impl IntoResponse {
     use kaiju_core::NexusError;
-    if req.workspace.trim().is_empty() || req.prompt.trim().is_empty() || req.agent_types.is_empty() {
+    if req.workspace.trim().is_empty()
+        || req.prompt.trim().is_empty()
+        || req.agent_types.is_empty()
+        || req.agent_types.iter().any(|t| t.trim().is_empty())
+    {
         return Err(err(
             StatusCode::BAD_REQUEST,
-            "workspace, prompt, and at least one agent_type are required",
+            "workspace, prompt, and at least one (non-empty) agent_type are required",
         ));
     }
     match crate::server::spawn_compare_group(
