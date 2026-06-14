@@ -658,19 +658,47 @@ async fn compare_judge(
     }
     let task = agents[0].prompt.clone().unwrap_or_default();
     let workspace = agents[0].workspace.clone();
-    let test_cmd = req.test_cmd.as_deref().map(str::trim).filter(|s| !s.is_empty());
-    let mut candidates: Vec<crate::judge::Candidate> = Vec::new();
+    let test_cmd = req
+        .test_cmd
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    // Diffs are cheap + synchronous; collect them in order.
+    let diffs: Vec<String> = agents
+        .iter()
+        .map(|a| {
+            let d = crate::worktree::WorktreeManager::diff(a.run_dir()).unwrap_or_default();
+            if d.trim().is_empty() { "(no changes)".to_string() } else { d }
+        })
+        .collect();
+
+    // Test runs are slow; launch them concurrently (one task per candidate).
+    let mut handles = Vec::with_capacity(agents.len());
+    for a in &agents {
+        let rundir = a.run_dir().to_path_buf();
+        let cmd = test_cmd.clone();
+        handles.push(tokio::spawn(async move {
+            match cmd {
+                Some(c) => Some(crate::judge::run_tests(&rundir, &c).await),
+                None => None,
+            }
+        }));
+    }
+    // Await in order; a join error (task panic) degrades to no test result.
+    let mut tests: Vec<Option<crate::judge::TestSummary>> = Vec::with_capacity(handles.len());
+    for h in handles {
+        tests.push(h.await.ok().flatten());
+    }
+
+    let mut candidates: Vec<crate::judge::Candidate> = Vec::with_capacity(agents.len());
     for (i, a) in agents.iter().enumerate() {
-        let diff = crate::worktree::WorktreeManager::diff(a.run_dir()).unwrap_or_default();
-        let test = match test_cmd {
-            Some(cmd) => Some(crate::judge::run_tests(a.run_dir(), cmd).await),
-            None => None,
-        };
         candidates.push(crate::judge::Candidate {
             label: crate::judge::label_for(i),
             agent_type: a.agent_type.to_string(),
-            diff: if diff.trim().is_empty() { "(no changes)".to_string() } else { diff },
-            test,
+            diff: diffs[i].clone(),
+            test: tests[i].take(),
         });
     }
     let legend: Vec<serde_json::Value> = agents
