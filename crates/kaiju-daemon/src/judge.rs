@@ -139,6 +139,7 @@ pub async fn run_tests(workdir: &Path, cmd: &str) -> TestSummary {
         .current_dir(workdir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .stdin(Stdio::null())
         .kill_on_drop(true)
         .spawn()
     {
@@ -182,7 +183,8 @@ pub async fn run_tests(workdir: &Path, cmd: &str) -> TestSummary {
             }
         }
         Ok((Err(e), _, _)) => TestSummary { passed: false, summary: format!("could not run tests: {e}") },
-        // Timeout: dropping `work` drops `child`, and kill_on_drop reaps it.
+        // Timeout: `work` is dropped (releasing its &mut borrow), then `child`
+        // drops at end of scope — kill_on_drop sends SIGKILL.
         Err(_) => TestSummary { passed: false, summary: "tests timed out (300s)".to_string() },
     }
 }
