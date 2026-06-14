@@ -188,7 +188,17 @@ impl WorktreeManager {
             .args(["-C", &dir, "commit", "-m", message])
             .output()
             .map_err(NexusError::Io)?;
-        Ok(commit.status.success())
+        if commit.status.success() {
+            Ok(true)
+        } else {
+            let stderr = String::from_utf8_lossy(&commit.stderr);
+            let stdout = String::from_utf8_lossy(&commit.stdout);
+            if stdout.contains("nothing to commit") || stderr.contains("nothing to commit") {
+                Ok(false)
+            } else {
+                Err(NexusError::Git(format!("git commit failed: {}", stderr.trim())))
+            }
+        }
     }
 
     /// Merge `branch` into the current branch at `workspace` (`--no-ff`). On

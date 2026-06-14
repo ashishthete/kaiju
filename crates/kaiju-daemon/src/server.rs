@@ -454,6 +454,11 @@ pub fn promote_agent_internal(state: &AppState, id: &str) -> Result<PromoteOutco
         .store
         .get(id)
         .ok_or_else(|| NexusError::AgentNotFound(id.to_string()))?;
+    if agent.status.is_active() {
+        return Err(NexusError::Git(
+            "stop the run (or let it finish) before promoting — it's still active".to_string(),
+        ));
+    }
     let worktree = match (&agent.isolate, &agent.worktree_path) {
         (true, Some(p)) if p.exists() => p.clone(),
         _ => {

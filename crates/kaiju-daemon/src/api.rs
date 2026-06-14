@@ -634,7 +634,7 @@ async fn promote_agent(State(state): State<AppState>, Path(id): Path<String>) ->
         )),
         Ok(PromoteOutcome::Conflict { branch }) => Err(err(
             StatusCode::CONFLICT,
-            &format!("merge conflict — resolve manually: git merge {branch}"),
+            &format!("merge conflict — the attempted merge was aborted (workspace is clean); merge manually: git merge {branch}"),
         )),
         Err(NexusError::AgentNotFound(_)) => Err(err(StatusCode::NOT_FOUND, "agent not found")),
         Err(e) => Err(err(StatusCode::BAD_REQUEST, &e.to_string())),
