@@ -25,6 +25,34 @@ pub struct Candidate {
 
 /// Per-candidate diff is capped so the prompt stays within argv limits.
 const DIFF_CAP_CHARS: usize = 6000;
+/// Memory bound on captured test output while draining (rolling tail of bytes).
+const OUTPUT_CAP_BYTES: usize = 64 * 1024;
+/// How much of the (already-bounded) output is shown to the judge.
+const SUMMARY_TAIL_CHARS: usize = 1500;
+
+/// Append `chunk` to `buf`, keeping at most `cap` trailing bytes.
+fn cap_tail(buf: &mut Vec<u8>, chunk: &[u8], cap: usize) {
+    buf.extend_from_slice(chunk);
+    if buf.len() > cap {
+        let drop = buf.len() - cap;
+        buf.drain(..drop);
+    }
+}
+
+/// Drain an async reader fully (so the child never blocks on a full pipe),
+/// retaining only the last `cap` bytes.
+async fn drain_tail<R: tokio::io::AsyncRead + Unpin>(mut r: R, cap: usize) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 8192];
+    loop {
+        match r.read(&mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(n) => cap_tail(&mut buf, &chunk[..n], cap),
+        }
+    }
+    buf
+}
 
 /// 0 -> "A", 1 -> "B", ... 25 -> "Z", 26 -> "AA".
 pub fn label_for(mut index: usize) -> String {
@@ -99,27 +127,64 @@ pub async fn run_judge(workspace: &Path, prompt: &str) -> Result<String> {
 /// Run `cmd` (via `sh -c`) in `workdir` with a timeout, capturing pass/fail and
 /// a tail of the combined output for the judge. Best-effort: a spawn failure or
 /// timeout is reported as a failing test with the reason.
+///
+/// Both stdout and stderr are drained concurrently so a chatty command never
+/// blocks on a full OS pipe. A rolling cap (`OUTPUT_CAP_BYTES`) bounds memory.
+/// The child is killed automatically on timeout via `kill_on_drop`.
 pub async fn run_tests(workdir: &Path, cmd: &str) -> TestSummary {
-    let fut = tokio::process::Command::new("sh")
+    use std::process::Stdio;
+    let mut child = match tokio::process::Command::new("sh")
         .arg("-c")
         .arg(cmd)
         .current_dir(workdir)
-        .output();
-    match tokio::time::timeout(std::time::Duration::from_secs(300), fut).await {
-        Ok(Ok(out)) => {
-            let mut combined = String::from_utf8_lossy(&out.stdout).to_string();
-            combined.push_str(&String::from_utf8_lossy(&out.stderr));
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return TestSummary { passed: false, summary: format!("could not run tests: {e}") },
+    };
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    // Drain both pipes (bounded) and reap the exit status. Draining prevents a
+    // chatty command from blocking on a full pipe; the rolling cap bounds memory.
+    let work = async {
+        let (o, e) = tokio::join!(
+            async {
+                match stdout {
+                    Some(s) => drain_tail(s, OUTPUT_CAP_BYTES).await,
+                    None => Vec::new(),
+                }
+            },
+            async {
+                match stderr {
+                    Some(s) => drain_tail(s, OUTPUT_CAP_BYTES).await,
+                    None => Vec::new(),
+                }
+            },
+        );
+        let status = child.wait().await;
+        (status, o, e)
+    };
+    match tokio::time::timeout(std::time::Duration::from_secs(300), work).await {
+        Ok((Ok(status), o, e)) => {
+            let mut combined = String::from_utf8_lossy(&o).to_string();
+            combined.push_str(&String::from_utf8_lossy(&e));
             let tail: String = {
                 let chars: Vec<char> = combined.chars().collect();
-                let start = chars.len().saturating_sub(1500);
+                let start = chars.len().saturating_sub(SUMMARY_TAIL_CHARS);
                 chars[start..].iter().collect()
             };
             TestSummary {
-                passed: out.status.success(),
-                summary: format!("exit {}\n{}", out.status.code().unwrap_or(-1), tail.trim()),
+                passed: status.success(),
+                summary: format!("exit {}\n{}", status.code().unwrap_or(-1), tail.trim()),
             }
         }
-        Ok(Err(e)) => TestSummary { passed: false, summary: format!("could not run tests: {e}") },
+        Ok((Err(e), _, _)) => TestSummary { passed: false, summary: format!("could not run tests: {e}") },
+        // Timeout: `work` is dropped (releasing its &mut borrow), then `child`
+        // drops at end of scope — kill_on_drop sends SIGKILL.
         Err(_) => TestSummary { passed: false, summary: "tests timed out (300s)".to_string() },
     }
 }
@@ -127,6 +192,19 @@ pub async fn run_tests(workdir: &Path, cmd: &str) -> TestSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cap_tail_keeps_trailing_bytes() {
+        let mut buf = Vec::new();
+        cap_tail(&mut buf, b"hello", 3);
+        assert_eq!(buf, b"llo");
+        cap_tail(&mut buf, b"world", 3); // "llo"+"world" -> last 3
+        assert_eq!(buf, b"rld");
+        // under cap: keep everything
+        let mut small = Vec::new();
+        cap_tail(&mut small, b"hi", 10);
+        assert_eq!(small, b"hi");
+    }
 
     #[test]
     fn labels_are_sequential() {
