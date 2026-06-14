@@ -693,3 +693,21 @@ async fn judge_accepts_test_cmd_field() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn promote_non_isolated_agent_is_rejected() {
+    use kaiju_core::agent::{Agent, AgentConfig, AgentType};
+    let state = AppState::new();
+    let agent = Agent::new(AgentConfig {
+        agent_type: AgentType::Claude, model: None,
+        workspace: std::path::PathBuf::from("/tmp"), prompt: None, extra_args: vec![],
+    });
+    let id = agent.id.clone();
+    state.store.insert(agent);
+    let app = build_app(state);
+    let resp = app
+        .oneshot(json_request("POST", &format!("/agents/{id}/promote"), serde_json::json!({})))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}

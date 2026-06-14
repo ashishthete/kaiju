@@ -30,6 +30,13 @@ pub fn worktree_path(base: &Path, agent_id: &str) -> PathBuf {
     base.join(id_prefix(agent_id))
 }
 
+/// Outcome of merging a run's branch into the workspace.
+pub enum MergeOutcome {
+    Merged,
+    AlreadyUpToDate,
+    Conflict,
+}
+
 /// Manages git worktrees via the `git` CLI.
 pub struct WorktreeManager;
 
@@ -152,6 +159,59 @@ impl WorktreeManager {
         }
 
         Ok(())
+    }
+
+    /// True if the working tree at `dir` has no staged/unstaged/untracked changes.
+    pub fn is_clean(dir: &Path) -> Result<bool> {
+        let out = Command::new("git")
+            .args(["-C", &dir.display().to_string(), "status", "--porcelain"])
+            .output()
+            .map_err(NexusError::Io)?;
+        Ok(out.status.success() && out.stdout.is_empty())
+    }
+
+    /// Stage everything and commit in `worktree`. Returns whether a commit was
+    /// actually made (`false` when there was nothing to commit — not an error).
+    pub fn commit_all(worktree: &Path, message: &str) -> Result<bool> {
+        let dir = worktree.display().to_string();
+        let add = Command::new("git")
+            .args(["-C", &dir, "add", "-A"])
+            .output()
+            .map_err(NexusError::Io)?;
+        if !add.status.success() {
+            return Err(NexusError::Git(format!(
+                "git add failed: {}",
+                String::from_utf8_lossy(&add.stderr).trim()
+            )));
+        }
+        let commit = Command::new("git")
+            .args(["-C", &dir, "commit", "-m", message])
+            .output()
+            .map_err(NexusError::Io)?;
+        Ok(commit.status.success())
+    }
+
+    /// Merge `branch` into the current branch at `workspace` (`--no-ff`). On
+    /// conflict, aborts so the workspace is left clean, and reports `Conflict`.
+    pub fn merge_branch(workspace: &Path, branch: &str, message: &str) -> Result<MergeOutcome> {
+        let dir = workspace.display().to_string();
+        let out = Command::new("git")
+            .args(["-C", &dir, "merge", "--no-ff", "-m", message, branch])
+            .output()
+            .map_err(NexusError::Io)?;
+        if out.status.success() {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            if stdout.contains("Already up to date") {
+                Ok(MergeOutcome::AlreadyUpToDate)
+            } else {
+                Ok(MergeOutcome::Merged)
+            }
+        } else {
+            let _ = Command::new("git")
+                .args(["-C", &dir, "merge", "--abort"])
+                .output();
+            Ok(MergeOutcome::Conflict)
+        }
     }
 }
 

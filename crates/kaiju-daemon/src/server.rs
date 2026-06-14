@@ -437,6 +437,57 @@ pub fn spawn_compare_group(
     Ok((group_id, ids))
 }
 
+/// Result of promoting a run into its workspace.
+pub enum PromoteOutcome {
+    Merged { branch: String },
+    NothingToPromote,
+    WorkspaceDirty,
+    Conflict { branch: String },
+}
+
+/// Commit an isolated run's changes on its branch and merge that branch into the
+/// workspace's current branch. Non-destructive on failure: refuses a dirty
+/// workspace up front and aborts a conflicting merge.
+pub fn promote_agent_internal(state: &AppState, id: &str) -> Result<PromoteOutcome> {
+    use crate::worktree::MergeOutcome;
+    let agent = state
+        .store
+        .get(id)
+        .ok_or_else(|| NexusError::AgentNotFound(id.to_string()))?;
+    let worktree = match (&agent.isolate, &agent.worktree_path) {
+        (true, Some(p)) if p.exists() => p.clone(),
+        _ => {
+            return Err(NexusError::Git(
+                "only an isolated run with a live worktree can be promoted".to_string(),
+            ))
+        }
+    };
+    if !WorktreeManager::is_clean(&agent.workspace)? {
+        return Ok(PromoteOutcome::WorkspaceDirty);
+    }
+    let branch = worktree::branch_name(&agent.id);
+    let short = &agent.id[..agent.id.len().min(8)];
+    let made = WorktreeManager::commit_all(
+        &worktree,
+        &format!("kaiju: promote {} run {short}", agent.agent_type),
+    )?;
+    match WorktreeManager::merge_branch(
+        &agent.workspace,
+        &branch,
+        &format!("kaiju: promote run {short}"),
+    )? {
+        MergeOutcome::Merged => Ok(PromoteOutcome::Merged { branch }),
+        MergeOutcome::AlreadyUpToDate => {
+            if made {
+                Ok(PromoteOutcome::Merged { branch })
+            } else {
+                Ok(PromoteOutcome::NothingToPromote)
+            }
+        }
+        MergeOutcome::Conflict => Ok(PromoteOutcome::Conflict { branch }),
+    }
+}
+
 /// Internal helper: stop an agent by killing its tmux session.
 pub fn stop_agent_internal(state: &AppState, id: &str) -> Result<()> {
     let agent = state

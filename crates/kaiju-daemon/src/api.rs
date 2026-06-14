@@ -23,6 +23,7 @@ pub fn routes() -> Router<AppState> {
         .route("/agents/:id/logs", get(get_logs))
         .route("/agents/:id/diff", get(get_diff))
         .route("/agents/:id/status", get(get_status))
+        .route("/agents/:id/promote", post(promote_agent))
         .route("/agents/:id/interrupt", post(interrupt_agent))
         .route("/agents/:id/input", post(send_input))
         .route(
@@ -613,6 +614,30 @@ async fn compare(
             };
             Err(err(code, &e.to_string()))
         }
+    }
+}
+
+/// `POST /agents/:id/promote` — merge a run's branch into its workspace.
+async fn promote_agent(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    use crate::server::PromoteOutcome;
+    use kaiju_core::NexusError;
+    match crate::server::promote_agent_internal(&state, &id) {
+        Ok(PromoteOutcome::Merged { branch }) => {
+            Ok(Json(serde_json::json!({ "status": "merged", "branch": branch })))
+        }
+        Ok(PromoteOutcome::NothingToPromote) => {
+            Err(err(StatusCode::BAD_REQUEST, "nothing to promote — the run made no changes"))
+        }
+        Ok(PromoteOutcome::WorkspaceDirty) => Err(err(
+            StatusCode::CONFLICT,
+            "workspace has uncommitted changes — commit or stash them first",
+        )),
+        Ok(PromoteOutcome::Conflict { branch }) => Err(err(
+            StatusCode::CONFLICT,
+            &format!("merge conflict — resolve manually: git merge {branch}"),
+        )),
+        Err(NexusError::AgentNotFound(_)) => Err(err(StatusCode::NOT_FOUND, "agent not found")),
+        Err(e) => Err(err(StatusCode::BAD_REQUEST, &e.to_string())),
     }
 }
 
