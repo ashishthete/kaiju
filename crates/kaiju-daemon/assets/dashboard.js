@@ -678,7 +678,8 @@ async function renderComparison(agents) {
         '<div class="cmp-col-head">' + esc(a.agent_type) +
         ' <span class="status s-' + a.status + '" id="cmp-st-' + a.id + '">' + esc(statusLabel(a.status)) + '</span>' +
         '<span class="grow"></span>' +
-        '<button onclick="select(\'' + a.id + '\')">Open</button></div>' +
+        '<button onclick="select(\'' + a.id + '\')">Open</button>' +
+        '<button onclick="promoteRun(\'' + a.id + '\')">Promote</button></div>' +
         '<pre class="cmp-diff" id="cmp-diff-' + a.id + '">Loading…</pre></div>';
     }).join("");
   } else {
@@ -765,4 +766,14 @@ async function judgeComparison() {
       '<pre class="cmp-verdict-text">' + esc(d.verdict) + '</pre>';
   } catch (e) { box.textContent = "Judge failed."; }
   btn.disabled = false;
+}
+
+async function promoteRun(id) {
+  if (!confirm("Promote this run? It commits the run's changes and merges its branch into your workspace.")) return;
+  try {
+    const res = await api("/agents/" + id + "/promote", { method: "POST" });
+    const d = await res.json();
+    if (res.ok) { alert("Promoted — merged branch " + d.branch + " into your workspace."); }
+    else { alert(d.error || "Promote failed."); }
+  } catch (e) { alert("Promote failed."); }
 }
