@@ -79,7 +79,10 @@ to drive its terminal. Hit **Judge** to have a local `claude -p` rank the runs
 (anonymized A/B/C) with a winner + rationale — no API key needed. Provide an
 optional **test command** (e.g. `cargo test`) and the judge runs it in each
 worktree, weighing pass/fail over looks. That command runs locally via `sh -c`
-in each run's worktree (the endpoint is auth-gated).
+in each run's worktree (the endpoint is auth-gated). **Promote** a run to commit
+its changes and merge its branch into your workspace — it refuses if your
+workspace is dirty or the run is still active, and aborts cleanly on a conflict
+(telling you the branch to merge by hand).
 
 **Drag a file (or image) onto the terminal** to upload it into the agent's
 working dir (`.kaiju-uploads/`); Kaiju then types the saved path into the
@@ -223,6 +226,7 @@ marking any agent whose tmux session has since ended as stopped.
 | GET | `/sessions?workspace=&type=` | Resumable CLI sessions for a workspace (Claude). |
 | POST | `/compare` | Run one prompt across CLIs (isolated), grouped for side-by-side review. |
 | POST | `/compare/judge` | LLM-rank a compare group's runs (anonymized); optional `test_cmd` run per worktree for an objective signal. |
+| POST | `/agents/:id/promote` | Commit a run's changes and merge its branch into the workspace. |
 | GET | `/agents/:id` | Get one agent. |
 | DELETE | `/agents/:id` | Stop (if running) and remove. |
 | POST | `/agents/:id/start` | Start a created agent. |
