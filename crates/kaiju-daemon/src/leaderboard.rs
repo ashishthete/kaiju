@@ -46,13 +46,15 @@ pub fn standings(records: &[BakeoffRecord], workspace: &str) -> Vec<AgentStandin
     let mut map: BTreeMap<String, AgentStanding> = BTreeMap::new();
     for rec in records.iter().filter(|r| r.workspace == workspace) {
         for c in &rec.candidates {
-            let s = map.entry(c.agent_type.clone()).or_insert_with(|| AgentStanding {
-                agent_type: c.agent_type.clone(),
-                runs: 0,
-                wins: 0,
-                tests_passed: 0,
-                tests_run: 0,
-            });
+            let s = map
+                .entry(c.agent_type.clone())
+                .or_insert_with(|| AgentStanding {
+                    agent_type: c.agent_type.clone(),
+                    runs: 0,
+                    wins: 0,
+                    tests_passed: 0,
+                    tests_run: 0,
+                });
             s.runs += 1;
             if c.is_winner {
                 s.wins += 1;
@@ -66,7 +68,11 @@ pub fn standings(records: &[BakeoffRecord], workspace: &str) -> Vec<AgentStandin
         }
     }
     let mut v: Vec<AgentStanding> = map.into_values().collect();
-    v.sort_by(|a, b| b.wins.cmp(&a.wins).then(b.tests_passed.cmp(&a.tests_passed)));
+    v.sort_by(|a, b| {
+        b.wins
+            .cmp(&a.wins)
+            .then(b.tests_passed.cmp(&a.tests_passed))
+    });
     v
 }
 
@@ -81,8 +87,12 @@ fn leaderboard_path() -> Option<PathBuf> {
 
 /// Read all records; an absent/malformed file means "no history".
 pub fn load() -> Vec<BakeoffRecord> {
-    let Some(path) = leaderboard_path() else { return Vec::new() };
-    let Ok(content) = std::fs::read_to_string(path) else { return Vec::new() };
+    let Some(path) = leaderboard_path() else {
+        return Vec::new();
+    };
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
     serde_json::from_str(&content).unwrap_or_default()
 }
 
@@ -109,20 +119,44 @@ pub fn record(entry: BakeoffRecord) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn at() -> DateTime<Utc> { "2026-06-15T00:00:00Z".parse().unwrap() }
+    fn at() -> DateTime<Utc> {
+        "2026-06-15T00:00:00Z".parse().unwrap()
+    }
 
     fn rec(ws: &str, cands: Vec<CandidateResult>) -> BakeoffRecord {
-        BakeoffRecord { workspace: ws.into(), prompt: "p".into(), at: at(), candidates: cands }
+        BakeoffRecord {
+            workspace: ws.into(),
+            prompt: "p".into(),
+            at: at(),
+            candidates: cands,
+        }
     }
     fn cand(t: &str, win: bool, tests: Option<bool>) -> CandidateResult {
-        CandidateResult { agent_type: t.into(), model: None, tests_passed: tests, is_winner: win }
+        CandidateResult {
+            agent_type: t.into(),
+            model: None,
+            tests_passed: tests,
+            is_winner: win,
+        }
     }
 
     #[test]
     fn standings_aggregate_wins_and_tests_for_workspace() {
         let records = vec![
-            rec("/repo", vec![cand("claude", true, Some(true)), cand("codex", false, Some(false))]),
-            rec("/repo", vec![cand("claude", false, Some(false)), cand("codex", true, Some(true))]),
+            rec(
+                "/repo",
+                vec![
+                    cand("claude", true, Some(true)),
+                    cand("codex", false, Some(false)),
+                ],
+            ),
+            rec(
+                "/repo",
+                vec![
+                    cand("claude", false, Some(false)),
+                    cand("codex", true, Some(true)),
+                ],
+            ),
             rec("/other", vec![cand("claude", true, None)]),
         ];
         let s = standings(&records, "/repo");

@@ -71,7 +71,10 @@ mod tests {
     #[test]
     fn advertised_host_prefers_explicit_routable_ip() {
         // An explicit, routable bind IP is what we advertise verbatim.
-        assert_eq!(advertised_host(Some("192.168.1.5")), Some("192.168.1.5".to_string()));
+        assert_eq!(
+            advertised_host(Some("192.168.1.5")),
+            Some("192.168.1.5".to_string())
+        );
     }
 
     #[test]
@@ -79,7 +82,13 @@ mod tests {
         // Loopback/unspecified can't go in a QR a phone will open, so we fall
         // through to detection (which may be None in a sandbox) rather than
         // advertising 127.0.0.1 or 0.0.0.0.
-        assert_ne!(advertised_host(Some("127.0.0.1")), Some("127.0.0.1".to_string()));
-        assert_ne!(advertised_host(Some("0.0.0.0")), Some("0.0.0.0".to_string()));
+        assert_ne!(
+            advertised_host(Some("127.0.0.1")),
+            Some("127.0.0.1".to_string())
+        );
+        assert_ne!(
+            advertised_host(Some("0.0.0.0")),
+            Some("0.0.0.0".to_string())
+        );
     }
 }

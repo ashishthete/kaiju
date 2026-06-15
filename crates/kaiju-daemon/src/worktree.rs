@@ -196,7 +196,10 @@ impl WorktreeManager {
             if stdout.contains("nothing to commit") || stderr.contains("nothing to commit") {
                 Ok(false)
             } else {
-                Err(NexusError::Git(format!("git commit failed: {}", stderr.trim())))
+                Err(NexusError::Git(format!(
+                    "git commit failed: {}",
+                    stderr.trim()
+                )))
             }
         }
     }
