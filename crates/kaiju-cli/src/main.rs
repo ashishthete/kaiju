@@ -50,6 +50,16 @@ enum Commands {
         batch: bool,
     },
 
+    /// Spawn a Claude agent in the current directory (prompt optional)
+    Here {
+        /// Optional prompt/task for the agent
+        prompt: Option<String>,
+
+        /// Run the agent in its own git worktree (requires a git workspace)
+        #[arg(long)]
+        isolate: bool,
+    },
+
     /// List all agents
     List {
         /// Show only active agents
@@ -167,6 +177,13 @@ async fn main() {
             };
             client
                 .start(&agent_type, &workspace, model, prompt, isolate, batch)
+                .await
+        }
+        Commands::Here { prompt, isolate } => {
+            // Default: claude, current directory, optional prompt, auto-started.
+            let workspace = std::env::current_dir().unwrap().display().to_string();
+            client
+                .start("claude", &workspace, None, prompt, isolate, false)
                 .await
         }
         Commands::List { active } => client.list(active).await,
