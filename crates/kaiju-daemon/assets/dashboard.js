@@ -113,8 +113,8 @@ function showTab(which) {
 const TERM_FONT = "'JetBrains Mono','SF Mono','Cascadia Code',Menlo,Monaco,'DejaVu Sans Mono',ui-monospace,monospace";
 const TERM_FONT_SIZE = 13, TERM_LINE_HEIGHT = 1.25, TERM_LETTER = 0.2, TERM_PAD = 10;
 const TERM_THEME = {
-  background: '#0d1117', foreground: '#c9d1d9', cursor: '#c9d1d9',
-  selectionBackground: '#3b82f655',
+  background: '#0d1117', foreground: '#c9d1d9', cursor: '#34e2a0',
+  selectionBackground: '#34e2a030',
   black: '#484f58', red: '#ff7b72', green: '#3fb950', yellow: '#d29922',
   blue: '#58a6ff', magenta: '#bc8cff', cyan: '#39c5cf', white: '#b1bac4',
   brightBlack: '#6e7681', brightRed: '#ffa198', brightGreen: '#56d364',
@@ -297,6 +297,16 @@ function noteBusy(msg) {
   document.getElementById("d-note").innerHTML = '<span class="spinner"></span> ' + esc(msg);
 }
 
+// Show/hide the welcome empty-state in the stage.
+function showWelcome() {
+  document.getElementById("welcome").style.display = "";
+}
+function hideWelcome() {
+  document.getElementById("welcome").style.display = "none";
+}
+
+// Emit agent cards into #rows (a <div>). Preserves all bookkeeping, counts
+// pills, filtering, ordering, attention classes, and staggered reveal.
 function render(agents) {
   lastAgents = agents;
   document.getElementById("empty").hidden = agents.length > 0;
@@ -314,38 +324,60 @@ function render(agents) {
   for (const a of agents) counts[a.status] = (counts[a.status] || 0) + 1;
   document.getElementById("counts").innerHTML =
     Object.keys(counts).sort((x, y) => (ORDER[x]??9) - (ORDER[y]??9))
-      .map(s => `<span class="pill">${counts[s]} ${esc(statusLabel(s))}</span>`).join("");
+      .map(s => `<span class="pill">${counts[s]}&thinsp;${esc(statusLabel(s))}</span>`).join("");
 
-  // Apply the fleet filter (search text + status) to the displayed rows.
+  // Apply the fleet filter (search text + status) to the displayed cards.
   const ft = (document.getElementById("filter-text") || {}).value || "";
   const fs = (document.getElementById("filter-status") || {}).value || "all";
   const rows = agents
     .filter(a => matchesFilter(a, ft) && (fs === "all" || a.status === fs))
     .sort((a, b) => (ORDER[a.status]??9) - (ORDER[b.status]??9));
 
-  document.getElementById("rows").innerHTML = rows.map(a => {
+  // Cap stagger delay so a large fleet doesn't delay cards past 600ms.
+  const STAGGER_CAP = 600;
+  const stepMs = rows.length > 1 ? Math.min(60, Math.floor(STAGGER_CAP / rows.length)) : 0;
+
+  document.getElementById("rows").innerHTML = rows.map((a, i) => {
     const m = a.metrics || {};
-    const attn = ATTENTION.has(a.status) ? "attention" : "";
-    const sel = a.id === selected ? " selected" : "";
-    const cost = m.estimated_cost_usd != null ? "$" + m.estimated_cost_usd.toFixed(2) : "-";
-    const toks = m.tokens_used != null ? m.tokens_used.toLocaleString() : "-";
-    return `<tr class="${attn}${sel}" title="${esc(a.workspace)}" onclick="select('${a.id}')">
-      <td class="id" title="${a.id}">${a.id.slice(0,10)}</td>
-      <td>${esc(a.agent_type)}</td>
-      <td>${esc(a.model) || "-"}</td>
-      <td><span class="status s-${a.status}">${esc(statusLabel(a.status))}</span></td>
-      <td>${fmtDuration(m.runtime_secs || 0)}</td>
-      <td>${toks}</td>
-      <td>${cost}</td>
-      <td class="prompt">${esc(a.prompt) || "-"}</td>
-      <td class="actions" onclick="event.stopPropagation()">
-        <button title="Copy ID" onclick="copyId('${a.id}')">⧉</button>
-        <button title="Interrupt" onclick="rowAct('${a.id}','interrupt')">⎋</button>
-        <button title="Stop" onclick="rowAct('${a.id}','stop')">■</button>
-        <button title="Remove" onclick="removeAgent('${a.id}')">✕</button>
-        ${a.compare_group ? '<button class="pill" title="Open comparison" onclick="event.stopPropagation();openComparison(\'' + a.compare_group + '\')">compare</button>' : ''}
-      </td>
-    </tr>`;
+    const attn = ATTENTION.has(a.status) ? " attention" : "";
+    const sel  = a.id === selected ? " selected" : "";
+    const cost = m.estimated_cost_usd != null ? "$" + m.estimated_cost_usd.toFixed(2) : "–";
+    const toks = m.tokens_used != null ? m.tokens_used.toLocaleString() : "–";
+    const dur  = fmtDuration(m.runtime_secs || 0);
+    const delayMs = i * stepMs;
+    const model = esc(a.model) || "–";
+    const cmpBadge = a.compare_group
+      ? `<button class="sm pill" title="Open comparison" onclick="event.stopPropagation();openComparison('${a.compare_group}')">compare</button>`
+      : "";
+    return `<div class="agent-card s-${a.status}${attn}${sel}"
+         style="animation-delay:${delayMs}ms"
+         title="${esc(a.workspace)}"
+         onclick="select('${a.id}')">
+  <div class="card-body">
+    <div class="card-top">
+      <span class="dot s-${a.status}"></span>
+      <span class="card-id">${a.id.slice(0,10)}</span>
+      <span class="chip">${esc(a.agent_type)}</span>
+      <span class="grow"></span>
+      <span class="status s-${a.status}">${esc(statusLabel(a.status))}</span>
+    </div>
+    <div class="card-task">${esc(a.prompt) || esc(a.workspace) || "–"}</div>
+    <div class="card-metrics">
+      <span><span class="metric-val">${dur}</span></span>
+      <span><span class="metric-val">${toks}</span> tok</span>
+      <span><span class="metric-val">${cost}</span></span>
+      <span>${model}</span>
+    </div>
+  </div>
+  <div class="card-actions" onclick="event.stopPropagation()">
+    <button class="sm" title="Copy ID" onclick="copyId('${a.id}')">⧉</button>
+    <button class="sm" title="Interrupt" onclick="rowAct('${a.id}','interrupt')">⎋</button>
+    <button class="sm" title="Stop" onclick="rowAct('${a.id}','stop')">■</button>
+    <button class="sm danger" title="Remove" onclick="removeAgent('${a.id}')">✕</button>
+    ${cmpBadge}
+    <span class="grow"></span>
+  </div>
+</div>`;
   }).join("");
 }
 
@@ -372,16 +404,20 @@ function select(id) {
   closeComparison();   // leaving the side-by-side view for one agent's detail
   selected = id;
   lastDiff = null;
+  hideWelcome();
+  document.getElementById("leaderboard-panel").hidden = true;
   document.getElementById("detail").hidden = false;
   document.getElementById("d-id").textContent = id.slice(0, 10);
   document.getElementById("d-logs").textContent = "Loading…";
   note("");
   showTab("term");   // open on the live terminal by default
 }
+
 function closeDetail() {
   closeTerminal();
   selected = null;
   document.getElementById("detail").hidden = true;
+  showWelcome();
 }
 
 async function refreshDetail() {
@@ -534,7 +570,7 @@ async function refresh() {
 (function setupTerminalDrop() {
   const el = document.getElementById("d-term");
   if (!el) return;
-  el.addEventListener("dragover", (e) => { e.preventDefault(); el.style.outline = "2px dashed #3b82f6"; });
+  el.addEventListener("dragover", (e) => { e.preventDefault(); el.style.outline = "2px dashed #34e2a0"; });
   el.addEventListener("dragleave", () => { el.style.outline = ""; });
   el.addEventListener("drop", async (e) => {
     e.preventDefault();
@@ -544,7 +580,7 @@ async function refresh() {
       return;
     }
     for (const file of e.dataTransfer.files) {
-      note("⬆ uploading " + file.name + "…");
+      note("uploading " + file.name + "…");
       try {
         const buf = await file.arrayBuffer();
         const res = await api("/agents/" + selected + "/files?name=" + encodeURIComponent(file.name), {
@@ -556,7 +592,7 @@ async function refresh() {
           const p = (await res.json()).path;
           ws.send(p + " ");
           if (term) term.focus();
-          note("📎 uploaded " + file.name + " → " + p);
+          note("uploaded " + file.name + " -> " + p);
         } else {
           note("upload failed (" + res.status + "): " + file.name);
         }
@@ -648,6 +684,8 @@ function openComparison(groupId) {
   closeDetail();   // leaving any single-agent detail (and its terminal WS)
   compareGroup = groupId;
   compareIds = [];
+  hideWelcome();
+  document.getElementById("leaderboard-panel").hidden = true;
   document.getElementById("compare-panel").hidden = false;
   document.getElementById("cmp-verdict").hidden = true;
   document.getElementById("cmp-test-cmd").value = localStorage.getItem("kaiju_test_cmd") || "";
@@ -679,8 +717,8 @@ async function renderComparison(agents) {
         '<div class="cmp-col-head">' + esc(a.agent_type) +
         ' <span class="status s-' + a.status + '" id="cmp-st-' + a.id + '">' + esc(statusLabel(a.status)) + '</span>' +
         '<span class="grow"></span>' +
-        '<button onclick="select(\'' + a.id + '\')">Open</button>' +
-        '<button onclick="promoteRun(\'' + a.id + '\')">Promote</button></div>' +
+        '<button class="sm" onclick="select(\'' + a.id + '\')">Open</button>' +
+        '<button class="sm" onclick="promoteRun(\'' + a.id + '\')">Promote</button></div>' +
         '<pre class="cmp-diff" id="cmp-diff-' + a.id + '">Loading…</pre></div>';
     }).join("");
   } else {
@@ -793,13 +831,18 @@ async function promoteRun(id) {
 // --- Leaderboard ---
 
 function openLeaderboard() {
-  document.getElementById("detail").hidden = true;
+  closeDetail();
+  closeComparison();
+  hideWelcome();
   document.getElementById("leaderboard-panel").hidden = false;
   const ws = document.getElementById("lb-ws");
   if (!ws.value) ws.value = localStorage.getItem("kaiju_cmp_ws") || "";
   loadLeaderboard();
 }
-function closeLeaderboard() { document.getElementById("leaderboard-panel").hidden = true; }
+function closeLeaderboard() {
+  document.getElementById("leaderboard-panel").hidden = true;
+  showWelcome();
+}
 
 async function loadLeaderboard() {
   const ws = document.getElementById("lb-ws").value.trim();
