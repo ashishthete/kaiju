@@ -26,6 +26,11 @@ const CAPTURE_LINES: u32 = 200;
 /// considered stuck.
 const STUCK_THRESHOLD_SECS: i64 = 120;
 
+/// A fresh "waiting for input" signal from the parser is only trusted once the
+/// pane has been quiet this long. A prompt-looking line that flickers past while
+/// the agent is still streaming output should not raise a "needs input" alert.
+const WAIT_CONFIRM_SECS: i64 = 3;
+
 /// Per-agent record of the last distinct output seen, used to measure idle time.
 pub(crate) struct OutputActivity {
     fingerprint: u64,
@@ -45,16 +50,27 @@ fn fingerprint(output: &str) -> u64 {
 ///   the parser is silent) that has been idle past `threshold` becomes `Stuck`.
 /// - A `Stuck` agent whose output has moved again (idle below `threshold`)
 ///   recovers to `Running`.
-/// - Any explicit non-Running parser signal (waiting, error, completed) passes
+/// - A *new* waiting signal is held back until output has been quiet for
+///   `wait_confirm` seconds, so a prompt-looking line glimpsed mid-stream does
+///   not raise a false "needs input" alert. An agent already waiting stays so.
+/// - Any other explicit non-Running parser signal (error, completed) passes
 ///   through unchanged, so a waiting agent is never marked stuck.
 pub fn resolve_status(
     current: AgentStatus,
     parsed: Option<AgentStatus>,
     idle_secs: i64,
     threshold: i64,
+    wait_confirm: i64,
 ) -> AgentStatus {
     let base = parsed.unwrap_or(current);
     match base {
+        // Only trust a freshly-detected prompt once the pane has actually gone
+        // quiet; until then the agent is still considered active.
+        AgentStatus::WaitingForInput
+            if current != AgentStatus::WaitingForInput && idle_secs < wait_confirm =>
+        {
+            AgentStatus::Running
+        }
         AgentStatus::Running if idle_secs >= threshold => AgentStatus::Stuck,
         AgentStatus::Stuck if idle_secs < threshold => AgentStatus::Running,
         other => other,
@@ -167,7 +183,13 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
         }
         let idle_secs = (now - record.since).num_seconds();
 
-        let next = resolve_status(agent.status, parsed.status, idle_secs, STUCK_THRESHOLD_SECS);
+        let next = resolve_status(
+            agent.status,
+            parsed.status,
+            idle_secs,
+            STUCK_THRESHOLD_SECS,
+            WAIT_CONFIRM_SECS,
+        );
         if next != agent.status {
             if notify::should_alert(agent.status, next) {
                 notify::alert(agent, next);
@@ -260,30 +282,31 @@ mod tests {
     }
 
     const T: i64 = 120;
+    const W: i64 = 3;
 
     #[test]
     fn running_and_idle_becomes_stuck() {
         // Parser silent, agent was Running, idle past threshold.
-        let next = resolve_status(AgentStatus::Running, None, T, T);
+        let next = resolve_status(AgentStatus::Running, None, T, T, W);
         assert_eq!(next, AgentStatus::Stuck);
     }
 
     #[test]
     fn running_with_recent_output_stays_running() {
-        let next = resolve_status(AgentStatus::Running, Some(AgentStatus::Running), 3, T);
+        let next = resolve_status(AgentStatus::Running, Some(AgentStatus::Running), 3, T, W);
         assert_eq!(next, AgentStatus::Running);
     }
 
     #[test]
     fn stuck_recovers_when_output_moves() {
         // Output changed (idle reset to ~0), parser silent.
-        let next = resolve_status(AgentStatus::Stuck, None, 0, T);
+        let next = resolve_status(AgentStatus::Stuck, None, 0, T, W);
         assert_eq!(next, AgentStatus::Running);
     }
 
     #[test]
     fn stuck_stays_stuck_while_idle() {
-        let next = resolve_status(AgentStatus::Stuck, None, T + 30, T);
+        let next = resolve_status(AgentStatus::Stuck, None, T + 30, T, W);
         assert_eq!(next, AgentStatus::Stuck);
     }
 
@@ -294,13 +317,55 @@ mod tests {
             Some(AgentStatus::WaitingForInput),
             10_000,
             T,
+            W,
         );
         assert_eq!(next, AgentStatus::WaitingForInput);
     }
 
     #[test]
     fn explicit_completion_passes_through() {
-        let next = resolve_status(AgentStatus::Running, Some(AgentStatus::Completed), T, T);
+        let next = resolve_status(AgentStatus::Running, Some(AgentStatus::Completed), T, T, W);
         assert_eq!(next, AgentStatus::Completed);
+    }
+
+    #[test]
+    fn fresh_waiting_signal_is_held_until_output_is_quiet() {
+        // A prompt-looking line appeared but output is still moving (idle below
+        // the confirm window): treat the agent as still active, not waiting.
+        let next = resolve_status(
+            AgentStatus::Running,
+            Some(AgentStatus::WaitingForInput),
+            W - 1,
+            T,
+            W,
+        );
+        assert_eq!(next, AgentStatus::Running);
+    }
+
+    #[test]
+    fn waiting_signal_is_trusted_once_output_is_quiet() {
+        // Same prompt, but the pane has now been quiet past the confirm window.
+        let next = resolve_status(
+            AgentStatus::Running,
+            Some(AgentStatus::WaitingForInput),
+            W,
+            T,
+            W,
+        );
+        assert_eq!(next, AgentStatus::WaitingForInput);
+    }
+
+    #[test]
+    fn already_waiting_stays_waiting_even_if_output_just_moved() {
+        // Confirmed waiting agents are not bounced back to Running by a brief
+        // change (e.g. the prompt redrawing), regardless of idle time.
+        let next = resolve_status(
+            AgentStatus::WaitingForInput,
+            Some(AgentStatus::WaitingForInput),
+            0,
+            T,
+            W,
+        );
+        assert_eq!(next, AgentStatus::WaitingForInput);
     }
 }

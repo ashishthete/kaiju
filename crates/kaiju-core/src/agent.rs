@@ -108,6 +108,11 @@ pub struct Agent {
     /// Groups agents launched together by "Compare task" (a shared run id).
     #[serde(default)]
     pub compare_group: Option<String>,
+    /// A dev-server port reserved for this agent's worktree, exposed to its
+    /// session as `PORT`/`KAIJU_AGENT_PORT`. `None` until an isolated agent
+    /// starts. Lets parallel worktrees run dev servers without colliding.
+    #[serde(default)]
+    pub port: Option<u16>,
     pub created_at: DateTime<Utc>,
     /// Set when the agent's CLI process is actually launched. `None` until started.
     pub started_at: Option<DateTime<Utc>>,
@@ -134,6 +139,7 @@ impl Agent {
             worktree_path: None,
             batch: false,
             compare_group: None,
+            port: None,
             created_at: now,
             started_at: None,
             updated_at: now,
@@ -151,6 +157,12 @@ impl Agent {
     /// Record the worktree the agent is running in.
     pub fn set_worktree(&mut self, path: PathBuf) {
         self.worktree_path = Some(path);
+        self.updated_at = Utc::now();
+    }
+
+    /// Record the dev-server port reserved for this agent.
+    pub fn set_port(&mut self, port: u16) {
+        self.port = Some(port);
         self.updated_at = Utc::now();
     }
 

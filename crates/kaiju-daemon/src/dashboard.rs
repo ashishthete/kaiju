@@ -467,6 +467,17 @@ pub const PAGE: &str = r#"<!doctype html>
     color: var(--muted);
     white-space: nowrap;
   }
+  .detail-head .port {
+    font-family: "SF Mono","JetBrains Mono","Cascadia Code",ui-monospace,Menlo,monospace;
+    font-size: .75rem;
+    white-space: nowrap;
+  }
+  .detail-head .port a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dotted color-mix(in srgb, var(--accent) 50%, transparent);
+  }
+  .detail-head .port a:hover { border-bottom-style: solid; }
 
   .detail-body {
     flex: 1;
@@ -1106,6 +1117,7 @@ pub const PAGE: &str = r#"<!doctype html>
           <span class="status" id="d-status"></span>
           <span class="path" id="d-workspace" title=""></span>
           <span class="activity" id="d-activity"></span>
+          <span class="port" id="d-port"></span>
           <div class="grow"></div>
           <button class="sm" id="d-interrupt" onclick="act('interrupt')">Interrupt</button>
           <button class="sm danger" id="d-stop" onclick="act('stop')">Stop</button>
