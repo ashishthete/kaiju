@@ -379,7 +379,13 @@ function render(agents) {
   const fs = (document.getElementById("filter-status") || {}).value || "all";
   const rows = agents
     .filter(a => matchesFilter(a, ft) && (fs === "all" || a.status === fs))
-    .sort((a, b) => (ORDER[a.status]??9) - (ORDER[b.status]??9));
+    // Deterministic order: by status, then created_at, then id. Without the
+    // tiebreakers, same-status cards (e.g. several completed) shuffle each poll
+    // because the daemon's agent order isn't stable — which churned the list.
+    .sort((a, b) =>
+      (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) ||
+      (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0) ||
+      a.id.localeCompare(b.id));
 
   const cols = document.getElementById("rows");
 
