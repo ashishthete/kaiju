@@ -227,8 +227,10 @@ pub const PAGE: &str = r#"<!doctype html>
       transform .15s ease,
       border-color .15s ease,
       box-shadow .15s ease;
-    animation: cardReveal .32s ease both;
   }
+  /* Reveal animation only plays on first paint (the `enter` class), so the
+     2-second poll re-render doesn't replay it and flicker the list. */
+  .agent-card.enter { animation: cardReveal .32s ease both; }
   .agent-card:hover {
     transform: translateY(-1px);
     border-color: #34e2a040;
@@ -241,6 +243,9 @@ pub const PAGE: &str = r#"<!doctype html>
   .agent-card.attention {
     border-color: var(--amber);
     box-shadow: 0 0 0 1px var(--amber-weak), 0 0 18px #f5a62318;
+    animation: attentionPulse 2.4s ease-in-out 1s infinite;
+  }
+  .agent-card.enter.attention {
     animation: cardReveal .32s ease both, attentionPulse 2.4s ease-in-out 1s infinite;
   }
   @keyframes attentionPulse {
@@ -740,10 +745,13 @@ pub const PAGE: &str = r#"<!doctype html>
     color: var(--text);
     padding: 0;
     width: min(560px, 92vw);
+    /* Restore centering: the global `* { margin: 0 }` reset overrides the UA's
+       `dialog:modal { margin: auto }`, which would otherwise pin it top-left. */
+    margin: auto;
     box-shadow: 0 0 0 1px #34e2a015, 0 24px 64px #00000080;
   }
   dialog.modal::backdrop {
-    background: #00000088;
+    background: #000000b0;
     backdrop-filter: blur(4px);
   }
   dialog.modal form {
@@ -1003,6 +1011,7 @@ pub const PAGE: &str = r#"<!doctype html>
           <input id="n-model" placeholder="optional — defaults to the agent's own">
         </label>
         <label class="check"><input type="checkbox" id="n-isolate"> Run in an isolated git worktree</label>
+        <label class="check"><input type="checkbox" id="n-auto"> Auto-approve (run unattended — skips approval prompts)</label>
       </details>
       <div class="modal-actions">
         <button type="button" onclick="closeNew()">Cancel</button>
@@ -1057,6 +1066,7 @@ pub const PAGE: &str = r#"<!doctype html>
         <label class="check"><input type="checkbox" class="cmp-type" value="gemini"> gemini</label>
       </div>
     </div>
+    <label class="check"><input type="checkbox" id="cmp-auto" checked> Auto-approve runs (finish unattended, then judge)</label>
     <div class="note">Each CLI runs the same prompt in its own isolated git worktree, so they don't clobber each other.</div>
     <div class="modal-actions">
       <button type="button" onclick="closeCompare()">Cancel</button>
