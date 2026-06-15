@@ -11,6 +11,7 @@ let term = null, ws = null, activeTab = "term";
 let paused = false, pollTimer = null;
 let compareGroup = null;
 let firstPaint = true;   // gate the entry animation + auto-select to the first render
+let lastRowKey = "";     // ids+statuses of the rendered cards; rebuild only when it changes
 
 let notifyOn = localStorage.getItem("kaiju_notify") === "1";
 
@@ -308,6 +309,52 @@ function hideWelcome() {
 
 // Emit agent cards into #rows (a <div>). Preserves all bookkeeping, counts
 // pills, filtering, ordering, attention classes, and staggered reveal.
+// Just the live-metrics spans (runtime / tokens / cost / model) for a card —
+// the only part that ticks every poll, updated in place to avoid DOM churn.
+function metricsInner(a) {
+  const m = a.metrics || {};
+  const cost = m.estimated_cost_usd != null ? "$" + m.estimated_cost_usd.toFixed(2) : "–";
+  const toks = m.tokens_used != null ? m.tokens_used.toLocaleString() : "–";
+  const dur  = fmtDuration(m.runtime_secs || 0);
+  const model = esc(a.model) || "–";
+  return `<span><span class="metric-val">${dur}</span></span>` +
+         `<span><span class="metric-val">${toks}</span> tok</span>` +
+         `<span><span class="metric-val">${cost}</span></span>` +
+         `<span>${model}</span>`;
+}
+
+function cardHtml(a, i, stepMs) {
+  const attn = ATTENTION.has(a.status) ? " attention" : "";
+  const sel  = a.id === selected ? " selected" : "";
+  const enter = firstPaint ? " enter" : "";
+  const delayStyle = firstPaint ? ` style="animation-delay:${i * stepMs}ms"` : "";
+  const cmpBadge = a.compare_group
+    ? `<button class="sm pill" title="Open comparison" onclick="event.stopPropagation();openComparison('${a.compare_group}')">compare</button>`
+    : "";
+  return `<div class="agent-card s-${a.status}${attn}${sel}${enter}"${delayStyle}
+       data-id="${a.id}" title="${esc(a.workspace)}" onclick="select('${a.id}')">
+  <div class="card-body">
+    <div class="card-top">
+      <span class="dot s-${a.status}"></span>
+      <span class="card-id">${a.id.slice(0,10)}</span>
+      <span class="chip">${esc(a.agent_type)}</span>
+      <span class="grow"></span>
+      <span class="status s-${a.status}">${esc(statusLabel(a.status))}</span>
+    </div>
+    <div class="card-task">${esc(a.prompt) || esc(a.workspace) || "–"}</div>
+    <div class="card-metrics">${metricsInner(a)}</div>
+  </div>
+  <div class="card-actions" onclick="event.stopPropagation()">
+    <button class="sm" title="Copy ID" onclick="copyId('${a.id}')">⧉</button>
+    <button class="sm" title="Interrupt" onclick="rowAct('${a.id}','interrupt')">⎋</button>
+    <button class="sm" title="Stop" onclick="rowAct('${a.id}','stop')">■</button>
+    <button class="sm danger" title="Remove" onclick="removeAgent('${a.id}')">✕</button>
+    ${cmpBadge}
+    <span class="grow"></span>
+  </div>
+</div>`;
+}
+
 function render(agents) {
   lastAgents = agents;
   document.getElementById("empty").hidden = agents.length > 0;
@@ -334,53 +381,28 @@ function render(agents) {
     .filter(a => matchesFilter(a, ft) && (fs === "all" || a.status === fs))
     .sort((a, b) => (ORDER[a.status]??9) - (ORDER[b.status]??9));
 
+  const cols = document.getElementById("rows");
+
+  // Rebuild the card DOM only when the set/order/status changes. The common 2s
+  // poll (same cards, only metrics tick) updates metrics + selection IN PLACE,
+  // so card nodes — and their pulse animations — aren't destroyed/recreated.
+  const key = rows.map(a => a.id + ":" + a.status).join("|");
+  if (!firstPaint && key === lastRowKey) {
+    for (const a of rows) {
+      const card = cols.querySelector('.agent-card[data-id="' + a.id + '"]');
+      if (!card) continue;
+      card.classList.toggle("selected", a.id === selected);
+      const mEl = card.querySelector(".card-metrics");
+      if (mEl) mEl.innerHTML = metricsInner(a);
+    }
+    return;
+  }
+  lastRowKey = key;
+
   // Cap stagger delay so a large fleet doesn't delay cards past 600ms.
   const STAGGER_CAP = 600;
   const stepMs = rows.length > 1 ? Math.min(60, Math.floor(STAGGER_CAP / rows.length)) : 0;
-
-  document.getElementById("rows").innerHTML = rows.map((a, i) => {
-    const m = a.metrics || {};
-    const attn = ATTENTION.has(a.status) ? " attention" : "";
-    const sel  = a.id === selected ? " selected" : "";
-    const cost = m.estimated_cost_usd != null ? "$" + m.estimated_cost_usd.toFixed(2) : "–";
-    const toks = m.tokens_used != null ? m.tokens_used.toLocaleString() : "–";
-    const dur  = fmtDuration(m.runtime_secs || 0);
-    const delayMs = i * stepMs;
-    const enter = firstPaint ? " enter" : "";
-    const delayStyle = firstPaint ? ` style="animation-delay:${delayMs}ms"` : "";
-    const model = esc(a.model) || "–";
-    const cmpBadge = a.compare_group
-      ? `<button class="sm pill" title="Open comparison" onclick="event.stopPropagation();openComparison('${a.compare_group}')">compare</button>`
-      : "";
-    return `<div class="agent-card s-${a.status}${attn}${sel}${enter}"${delayStyle}
-         title="${esc(a.workspace)}"
-         onclick="select('${a.id}')">
-  <div class="card-body">
-    <div class="card-top">
-      <span class="dot s-${a.status}"></span>
-      <span class="card-id">${a.id.slice(0,10)}</span>
-      <span class="chip">${esc(a.agent_type)}</span>
-      <span class="grow"></span>
-      <span class="status s-${a.status}">${esc(statusLabel(a.status))}</span>
-    </div>
-    <div class="card-task">${esc(a.prompt) || esc(a.workspace) || "–"}</div>
-    <div class="card-metrics">
-      <span><span class="metric-val">${dur}</span></span>
-      <span><span class="metric-val">${toks}</span> tok</span>
-      <span><span class="metric-val">${cost}</span></span>
-      <span>${model}</span>
-    </div>
-  </div>
-  <div class="card-actions" onclick="event.stopPropagation()">
-    <button class="sm" title="Copy ID" onclick="copyId('${a.id}')">⧉</button>
-    <button class="sm" title="Interrupt" onclick="rowAct('${a.id}','interrupt')">⎋</button>
-    <button class="sm" title="Stop" onclick="rowAct('${a.id}','stop')">■</button>
-    <button class="sm danger" title="Remove" onclick="removeAgent('${a.id}')">✕</button>
-    ${cmpBadge}
-    <span class="grow"></span>
-  </div>
-</div>`;
-  }).join("");
+  cols.innerHTML = rows.map((a, i) => cardHtml(a, i, stepMs)).join("");
 
   // On the very first paint, open the top agent by default and stop replaying
   // the entry animation on subsequent polls.
