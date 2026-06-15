@@ -695,6 +695,23 @@ async fn judge_accepts_test_cmd_field() {
 }
 
 #[tokio::test]
+async fn leaderboard_empty_for_unknown_workspace() {
+    // Isolate the store so the test never reads the real ~/.kaiju/leaderboard.json.
+    let path = std::env::temp_dir().join("kaiju-test-lb-empty.json");
+    let _ = std::fs::remove_file(&path);
+    std::env::set_var("KAIJU_LEADERBOARD", &path);
+    let app = build_app(AppState::new());
+    let resp = app
+        .oneshot(get_request("/leaderboard?workspace=/no/such/repo"))
+        .await
+        .unwrap();
+    std::env::remove_var("KAIJU_LEADERBOARD");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert!(json.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn promote_non_isolated_agent_is_rejected() {
     use kaiju_core::agent::{Agent, AgentConfig, AgentType};
     let state = AppState::new();
