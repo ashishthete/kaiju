@@ -60,6 +60,10 @@ impl Adapter for GeminiAdapter {
         result
     }
 
+    fn auto_approve_args(&self) -> Vec<String> {
+        vec!["--yolo".to_string()]
+    }
+
     fn display_name(&self) -> &str {
         "Gemini CLI"
     }
@@ -114,5 +118,10 @@ mod tests {
         let adapter = GeminiAdapter;
         let parsed = adapter.parse_output("ERROR: quota exceeded");
         assert_eq!(parsed.status, Some(AgentStatus::Error));
+    }
+
+    #[test]
+    fn auto_approve_uses_yolo() {
+        assert_eq!(GeminiAdapter.auto_approve_args(), vec!["--yolo".to_string()]);
     }
 }

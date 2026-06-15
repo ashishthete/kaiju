@@ -67,6 +67,10 @@ impl Adapter for CodexAdapter {
         result
     }
 
+    fn auto_approve_args(&self) -> Vec<String> {
+        vec!["--full-auto".to_string()]
+    }
+
     fn display_name(&self) -> &str {
         "Codex CLI"
     }
@@ -129,5 +133,10 @@ mod tests {
         let adapter = CodexAdapter;
         let parsed = adapter.parse_output("Cost: $0.85");
         assert_eq!(parsed.estimated_cost_usd, Some(0.85));
+    }
+
+    #[test]
+    fn auto_approve_uses_full_auto() {
+        assert_eq!(CodexAdapter.auto_approve_args(), vec!["--full-auto".to_string()]);
     }
 }

@@ -232,6 +232,12 @@ pub trait Adapter: Send + Sync {
     fn default_model(&self) -> Option<&str> {
         None
     }
+
+    /// Flags that make this CLI run unattended (no approval prompts), for
+    /// auto-approve / bake-off runs. Default: none (the CLI has no such mode).
+    fn auto_approve_args(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 #[cfg(test)]
@@ -426,5 +432,17 @@ mod tests {
             workspace: ws.to_path_buf(), prompt: None, extra_args: vec![],
         };
         assert!(a.resume_session_command(&cfg, "abc").is_none());
+    }
+
+    #[test]
+    fn default_auto_approve_args_empty() {
+        struct Bare;
+        impl Adapter for Bare {
+            fn agent_type(&self) -> AgentType { AgentType::Claude }
+            fn build_command(&self, _c: &AgentConfig) -> String { String::new() }
+            fn parse_output(&self, _o: &str) -> ParsedOutput { ParsedOutput::default() }
+            fn display_name(&self) -> &str { "bare" }
+        }
+        assert!(Bare.auto_approve_args().is_empty());
     }
 }

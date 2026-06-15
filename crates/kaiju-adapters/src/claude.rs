@@ -134,6 +134,10 @@ impl Adapter for ClaudeAdapter {
         })
     }
 
+    fn auto_approve_args(&self) -> Vec<String> {
+        vec!["--dangerously-skip-permissions".to_string()]
+    }
+
     fn display_name(&self) -> &str {
         "Claude Code"
     }
@@ -355,5 +359,10 @@ mod tests {
         assert!(cmd.contains("cd /tmp/repo &&"));
         assert!(cmd.contains("--resume abc123"));
         assert!(cmd.contains("--model claude-opus-4-8"));
+    }
+
+    #[test]
+    fn auto_approve_uses_skip_permissions() {
+        assert_eq!(ClaudeAdapter.auto_approve_args(), vec!["--dangerously-skip-permissions".to_string()]);
     }
 }
