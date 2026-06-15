@@ -19,6 +19,8 @@ point is the bake-off: **compare → judge → promote.**
   tests in each worktree and weighs pass/fail over looks.
 - **Promote the winner.** One click commits a run's changes and merges its branch
   into your workspace (refuses a dirty tree, aborts cleanly on conflict).
+- **Leaderboard.** Every judged bake-off is recorded per repo — open **Leaderboard**
+  to see which model wins most and whose tests pass most for *this* codebase.
 
 ## Also a capable fleet manager
 
@@ -239,6 +241,7 @@ marking any agent whose tmux session has since ended as stopped.
 | POST | `/compare` | Run one prompt across CLIs (isolated), grouped for side-by-side review. |
 | POST | `/compare/judge` | LLM-rank a compare group's runs (anonymized); optional `test_cmd` run per worktree for an objective signal. |
 | POST | `/agents/:id/promote` | Commit a run's changes and merge its branch into the workspace. |
+| GET | `/leaderboard?workspace=` | Per-repo model standings (wins, runs, test pass-rate). |
 | GET | `/agents/:id` | Get one agent. |
 | DELETE | `/agents/:id` | Stop (if running) and remove. |
 | POST | `/agents/:id/start` | Start a created agent. |
