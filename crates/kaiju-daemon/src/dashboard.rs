@@ -227,8 +227,10 @@ pub const PAGE: &str = r#"<!doctype html>
       transform .15s ease,
       border-color .15s ease,
       box-shadow .15s ease;
-    animation: cardReveal .32s ease both;
   }
+  /* Reveal animation only plays on first paint (the `enter` class), so the
+     2-second poll re-render doesn't replay it and flicker the list. */
+  .agent-card.enter { animation: cardReveal .32s ease both; }
   .agent-card:hover {
     transform: translateY(-1px);
     border-color: #34e2a040;
@@ -241,6 +243,9 @@ pub const PAGE: &str = r#"<!doctype html>
   .agent-card.attention {
     border-color: var(--amber);
     box-shadow: 0 0 0 1px var(--amber-weak), 0 0 18px #f5a62318;
+    animation: attentionPulse 2.4s ease-in-out 1s infinite;
+  }
+  .agent-card.enter.attention {
     animation: cardReveal .32s ease both, attentionPulse 2.4s ease-in-out 1s infinite;
   }
   @keyframes attentionPulse {
@@ -740,10 +745,13 @@ pub const PAGE: &str = r#"<!doctype html>
     color: var(--text);
     padding: 0;
     width: min(560px, 92vw);
+    /* Restore centering: the global `* { margin: 0 }` reset overrides the UA's
+       `dialog:modal { margin: auto }`, which would otherwise pin it top-left. */
+    margin: auto;
     box-shadow: 0 0 0 1px #34e2a015, 0 24px 64px #00000080;
   }
   dialog.modal::backdrop {
-    background: #00000088;
+    background: #000000b0;
     backdrop-filter: blur(4px);
   }
   dialog.modal form {

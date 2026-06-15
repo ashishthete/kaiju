@@ -10,6 +10,7 @@ let token = localStorage.getItem("kaiju_token") || "";
 let term = null, ws = null, activeTab = "term";
 let paused = false, pollTimer = null;
 let compareGroup = null;
+let firstPaint = true;   // gate the entry animation + auto-select to the first render
 
 let notifyOn = localStorage.getItem("kaiju_notify") === "1";
 
@@ -345,12 +346,13 @@ function render(agents) {
     const toks = m.tokens_used != null ? m.tokens_used.toLocaleString() : "–";
     const dur  = fmtDuration(m.runtime_secs || 0);
     const delayMs = i * stepMs;
+    const enter = firstPaint ? " enter" : "";
+    const delayStyle = firstPaint ? ` style="animation-delay:${delayMs}ms"` : "";
     const model = esc(a.model) || "–";
     const cmpBadge = a.compare_group
       ? `<button class="sm pill" title="Open comparison" onclick="event.stopPropagation();openComparison('${a.compare_group}')">compare</button>`
       : "";
-    return `<div class="agent-card s-${a.status}${attn}${sel}"
-         style="animation-delay:${delayMs}ms"
+    return `<div class="agent-card s-${a.status}${attn}${sel}${enter}"${delayStyle}
          title="${esc(a.workspace)}"
          onclick="select('${a.id}')">
   <div class="card-body">
@@ -379,6 +381,13 @@ function render(agents) {
   </div>
 </div>`;
   }).join("");
+
+  // On the very first paint, open the top agent by default and stop replaying
+  // the entry animation on subsequent polls.
+  if (firstPaint) {
+    firstPaint = false;
+    if (!selected && rows.length > 0) select(rows[0].id);
+  }
 }
 
 // Re-render the current fleet with the active filters (no refetch).
