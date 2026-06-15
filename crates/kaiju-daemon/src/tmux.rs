@@ -22,20 +22,31 @@ impl TmuxManager {
     /// Because the agent is the session's process, the session ends when the
     /// agent exits — a clean "completed" signal. Input can still be delivered
     /// with `send_keys` while it runs, and `capture_pane` reads its output.
-    pub fn create_session(session_name: &str, working_dir: &str, command: &str) -> Result<()> {
-        let output = Command::new("tmux")
-            .args([
-                "new-session",
-                "-d",
-                "-s",
-                session_name,
-                "-c",
-                working_dir,
-                "sh",
-                "-c",
-                command,
-            ])
-            .output()?;
+    /// `env` entries are exported into the session (and so inherited by the
+    /// agent and any process it spawns) via tmux `new-session -e KEY=VALUE`.
+    pub fn create_session(
+        session_name: &str,
+        working_dir: &str,
+        command: &str,
+        env: &[(String, String)],
+    ) -> Result<()> {
+        let mut args = vec![
+            "new-session".to_string(),
+            "-d".to_string(),
+            "-s".to_string(),
+            session_name.to_string(),
+            "-c".to_string(),
+            working_dir.to_string(),
+        ];
+        for (key, value) in env {
+            args.push("-e".to_string());
+            args.push(format!("{key}={value}"));
+        }
+        args.push("sh".to_string());
+        args.push("-c".to_string());
+        args.push(command.to_string());
+
+        let output = Command::new("tmux").args(&args).output()?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

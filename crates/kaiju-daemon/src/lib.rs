@@ -19,6 +19,7 @@ pub mod notify;
 pub mod pair_api;
 pub mod pairing;
 pub mod persist;
+pub mod port;
 pub mod reconcile;
 pub mod scheduler;
 pub mod server;

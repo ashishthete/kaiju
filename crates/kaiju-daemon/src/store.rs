@@ -159,6 +159,23 @@ impl AgentStore {
         updated
     }
 
+    pub fn set_port(&self, id: &str, port: u16) -> bool {
+        let updated = {
+            let mut agents = self.agents.write().unwrap();
+            match agents.get_mut(id) {
+                Some(agent) => {
+                    agent.set_port(port);
+                    true
+                }
+                None => false,
+            }
+        };
+        if updated {
+            self.persist();
+        }
+        updated
+    }
+
     pub fn remove(&self, id: &str) -> Option<Agent> {
         let removed = {
             let mut agents = self.agents.write().unwrap();

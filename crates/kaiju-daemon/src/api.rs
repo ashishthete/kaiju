@@ -189,6 +189,7 @@ pub struct AgentResponse {
     pub updated_at: String,
     pub metrics: MetricsResponse,
     pub compare_group: Option<String>,
+    pub port: Option<u16>,
 }
 
 #[derive(Serialize)]
@@ -221,6 +222,7 @@ impl From<&kaiju_core::agent::Agent> for AgentResponse {
                 estimated_cost_usd: agent.metrics.estimated_cost_usd,
             },
             compare_group: agent.compare_group.clone(),
+            port: agent.port,
         }
     }
 }

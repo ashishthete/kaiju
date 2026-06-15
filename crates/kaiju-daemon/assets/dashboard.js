@@ -5,6 +5,7 @@ let selected = null;
 let lastStatus = {};
 let lastWorkspace = {};   // agent id -> workspace path, from the latest poll
 let lastUpdated = {};     // agent id -> updated_at (ISO), for "last activity"
+let lastPort = {};        // agent id -> reserved dev-server port (isolated agents)
 let lastAgents = [];      // most recent fetch, so filtering re-renders without refetch
 let token = localStorage.getItem("kaiju_token") || "";
 let term = null, ws = null, activeTab = "term";
@@ -364,6 +365,7 @@ function render(agents) {
     lastStatus[a.id] = a.status;
     lastWorkspace[a.id] = a.workspace;
     lastUpdated[a.id] = a.updated_at;
+    lastPort[a.id] = a.port;
     notifyTransition(prev[a.id], a);
   }
 
@@ -471,6 +473,16 @@ async function refreshDetail() {
   wsEl.title = ws;
   const upd = lastUpdated[selected];
   document.getElementById("d-activity").textContent = upd ? "active " + timeAgo(upd) : "";
+  // Isolated agents reserve a dev-server port; offer a one-click link to it.
+  const port = lastPort[selected];
+  const portEl = document.getElementById("d-port");
+  if (port) {
+    portEl.innerHTML = `<a href="http://localhost:${port}" target="_blank" rel="noopener">localhost:${port}</a>`;
+    portEl.title = "Dev-server port reserved for this worktree (PORT / KAIJU_AGENT_PORT)";
+  } else {
+    portEl.textContent = "";
+    portEl.title = "";
+  }
   // Offer Resume on a finished agent; Interrupt/Stop only while it's active.
   const terminal = TERMINAL.has(st);
   document.getElementById("d-resume").hidden = !terminal;

@@ -267,6 +267,19 @@ pub fn start_agent_internal(state: &AppState, id: &str) -> Result<()> {
         return Ok(());
     }
 
+    // Isolated agents get a private dev-server port so parallel worktrees don't
+    // fight over the default port. Best-effort: if the range is exhausted the
+    // agent still launches, just without an injected port.
+    let port = if agent.isolate {
+        let p = crate::port::allocate_port(&taken_ports(state));
+        if let Some(p) = p {
+            state.store.set_port(id, p);
+        }
+        p
+    } else {
+        None
+    };
+
     // Launch the agent as the tmux session's main process, so the session ends
     // when the agent exits (a clean completion signal).
     let command = adapter.build_command(&config);
@@ -274,11 +287,36 @@ pub fn start_agent_internal(state: &AppState, id: &str) -> Result<()> {
         &agent.session_name,
         &run_dir.display().to_string(),
         &command,
+        &session_env(port),
     )?;
 
     state.store.mark_started(id, chrono::Utc::now());
 
     Ok(())
+}
+
+/// Ports currently reserved by live agents, so a new agent never reuses one
+/// whose dev server may still be running.
+fn taken_ports(state: &AppState) -> std::collections::HashSet<u16> {
+    state
+        .store
+        .list_active()
+        .iter()
+        .filter_map(|a| a.port)
+        .collect()
+}
+
+/// Session environment for an agent's reserved port. `PORT` covers the common
+/// dev servers (Next.js, CRA, Express); `KAIJU_AGENT_PORT` is the explicit
+/// handle a project can wire up itself.
+fn session_env(port: Option<u16>) -> Vec<(String, String)> {
+    match port {
+        Some(p) => vec![
+            ("PORT".to_string(), p.to_string()),
+            ("KAIJU_AGENT_PORT".to_string(), p.to_string()),
+        ],
+        None => Vec::new(),
+    }
 }
 
 /// Resolve the working directory for an agent, creating a git worktree when
@@ -356,6 +394,7 @@ pub fn resume_agent_internal(state: &AppState, id: &str) -> Result<()> {
         &agent.session_name,
         &run_dir.display().to_string(),
         &command,
+        &session_env(agent.port),
     )?;
     state.store.mark_started(id, chrono::Utc::now());
     state.store.update_status(id, AgentStatus::Running);
@@ -387,10 +426,13 @@ pub fn adopt_agent_internal(
     let session_name = agent.session_name.clone();
     state.store.insert(agent);
 
+    // Adopt resumes an existing session in place (no worktree), so no port is
+    // reserved.
     TmuxManager::create_session(
         &session_name,
         &config.workspace.display().to_string(),
         &command,
+        &[],
     )?;
     state.store.mark_started(&id, chrono::Utc::now());
     Ok(id)
