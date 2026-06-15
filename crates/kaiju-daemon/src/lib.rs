@@ -11,6 +11,7 @@ pub mod dashboard;
 pub mod devices;
 pub mod files;
 pub mod judge;
+pub mod leaderboard;
 pub mod logstore;
 pub mod monitor;
 pub mod net;
