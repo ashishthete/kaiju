@@ -526,6 +526,7 @@ async function createAgent(ev) {
     workspace,
     prompt: document.getElementById("n-prompt").value || null,
     isolate: document.getElementById("n-isolate").checked,
+    auto_approve: document.getElementById("n-auto").checked,
     auto_start: true,
   };
   const model = document.getElementById("n-model").value.trim();
@@ -675,7 +676,7 @@ async function submitCompare() {
     const res = await api("/compare", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workspace: ws, prompt: prompt, agent_types: types }),
+      body: JSON.stringify({ workspace: ws, prompt: prompt, agent_types: types, auto_approve: document.getElementById("cmp-auto").checked }),
     });
     if (!res.ok) { alert((await res.json()).error || "Compare failed."); return; }
     const data = await res.json();

@@ -1011,6 +1011,7 @@ pub const PAGE: &str = r#"<!doctype html>
           <input id="n-model" placeholder="optional — defaults to the agent's own">
         </label>
         <label class="check"><input type="checkbox" id="n-isolate"> Run in an isolated git worktree</label>
+        <label class="check"><input type="checkbox" id="n-auto"> Auto-approve (run unattended — skips approval prompts)</label>
       </details>
       <div class="modal-actions">
         <button type="button" onclick="closeNew()">Cancel</button>
@@ -1065,6 +1066,7 @@ pub const PAGE: &str = r#"<!doctype html>
         <label class="check"><input type="checkbox" class="cmp-type" value="gemini"> gemini</label>
       </div>
     </div>
+    <label class="check"><input type="checkbox" id="cmp-auto" checked> Auto-approve runs (finish unattended, then judge)</label>
     <div class="note">Each CLI runs the same prompt in its own isolated git worktree, so they don't clobber each other.</div>
     <div class="modal-actions">
       <button type="button" onclick="closeCompare()">Cancel</button>

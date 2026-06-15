@@ -21,6 +21,10 @@ point is the bake-off: **compare → judge → promote.**
   into your workspace (refuses a dirty tree, aborts cleanly on conflict).
 - **Leaderboard.** Every judged bake-off is recorded per repo — open **Leaderboard**
   to see which model wins most and whose tests pass most for *this* codebase.
+- **Auto-approve.** Tick *auto-approve* (default on for bake-offs) and each run
+  launches with its CLI's unattended flag (`claude --dangerously-skip-permissions`,
+  `codex --full-auto`, `gemini --yolo`) so it finishes without prompting — runs are
+  isolated in their own worktree. Off by default for single agents.
 
 ## Also a capable fleet manager
 
