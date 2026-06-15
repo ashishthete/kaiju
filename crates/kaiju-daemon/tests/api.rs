@@ -728,3 +728,28 @@ async fn promote_non_isolated_agent_is_rejected() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn create_with_auto_approve_injects_flag() {
+    let state = AppState::new();
+    let app = build_app(state.clone());
+    let resp = app
+        .oneshot(json_request("POST", "/agents", serde_json::json!({
+            "agent_type": "claude", "workspace": "/tmp/x", "auto_start": false, "auto_approve": true
+        })))
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let agent = state.store.list().into_iter().next().unwrap();
+    assert!(agent.extra_args.iter().any(|a| a == "--dangerously-skip-permissions"));
+}
+
+#[tokio::test]
+async fn create_without_auto_approve_has_no_flag() {
+    let state = AppState::new();
+    let app = build_app(state.clone());
+    let _ = app.oneshot(json_request("POST", "/agents", serde_json::json!({
+        "agent_type": "claude", "workspace": "/tmp/x", "auto_start": false
+    }))).await.unwrap();
+    let agent = state.store.list().into_iter().next().unwrap();
+    assert!(!agent.extra_args.iter().any(|a| a == "--dangerously-skip-permissions"));
+}

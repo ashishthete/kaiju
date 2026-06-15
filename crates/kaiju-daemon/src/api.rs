@@ -83,6 +83,11 @@ pub struct CreateAgentRequest {
     /// mode. Requires a prompt and an adapter that supports it.
     #[serde(default)]
     pub batch: bool,
+    /// If true, inject the adapter's unattended-approval flags (e.g.
+    /// `--dangerously-skip-permissions` for Claude) before any user-supplied
+    /// extra_args.
+    #[serde(default)]
+    pub auto_approve: bool,
 }
 
 #[derive(Deserialize)]
@@ -112,6 +117,10 @@ pub struct CompareRequest {
     pub prompt: String,
     pub agent_types: Vec<String>,
     pub model: Option<String>,
+    /// If true, each agent in the compare group runs with unattended-approval
+    /// flags injected (e.g. `--dangerously-skip-permissions` for Claude).
+    #[serde(default)]
+    pub auto_approve: bool,
 }
 
 #[derive(Deserialize)]
@@ -341,13 +350,23 @@ async fn create_agent(
     // string becomes a custom CLI (the type name is the executable).
     let agent_type: AgentType = type_str.parse().expect("infallible");
 
+    // Prepend adapter's unattended-approval flags when the caller requests it.
+    let mut extra_args = req.extra_args;
+    if req.auto_approve {
+        if let Some(adapter) = state.adapters.get(&agent_type) {
+            let mut flags = adapter.auto_approve_args();
+            flags.extend(extra_args);
+            extra_args = flags;
+        }
+    }
+
     // Apply global defaults (model, extra args) for fields the request omits.
     let config = defaults.apply(AgentConfig {
         agent_type,
         model: req.model,
         workspace: PathBuf::from(&req.workspace),
         prompt: req.prompt,
-        extra_args: req.extra_args,
+        extra_args,
     });
 
     let mut agent = kaiju_core::agent::Agent::new(config);
@@ -602,6 +621,7 @@ async fn compare(
         &req.prompt,
         &req.agent_types,
         req.model,
+        req.auto_approve,
     ) {
         Ok((group_id, ids)) => {
             let agents: Vec<AgentResponse> = ids

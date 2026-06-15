@@ -407,6 +407,7 @@ pub fn spawn_compare_group(
     prompt: &str,
     agent_types: &[String],
     model: Option<String>,
+    auto_approve: bool,
 ) -> Result<(String, Vec<String>)> {
     if !WorktreeManager::is_git_repo(workspace) {
         return Err(NexusError::Git(format!(
@@ -419,12 +420,17 @@ pub fn spawn_compare_group(
     let mut ids = Vec::new();
     for type_str in agent_types {
         let agent_type: kaiju_core::agent::AgentType = type_str.parse().expect("infallible");
+        let extra_args = if auto_approve {
+            state.adapters.get(&agent_type).map(|a| a.auto_approve_args()).unwrap_or_default()
+        } else {
+            vec![]
+        };
         let config = defaults.apply(kaiju_core::agent::AgentConfig {
             agent_type,
             model: model.clone(),
             workspace: workspace.to_path_buf(),
             prompt: Some(prompt.to_string()),
-            extra_args: vec![],
+            extra_args,
         });
         let mut agent = kaiju_core::agent::Agent::new(config);
         agent.isolate = true;
