@@ -67,6 +67,16 @@ pub fn label_for(mut index: usize) -> String {
     s
 }
 
+/// Extract the structured winner label from a verdict ending with `WINNER: X`.
+/// Scans from the end and reads the trailing alphabetic label.
+pub fn parse_winner(verdict: &str) -> Option<String> {
+    verdict.lines().rev().find_map(|line| {
+        let rest = line.trim().strip_prefix("WINNER:")?;
+        let label: String = rest.trim().chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+        (!label.is_empty()).then(|| label.to_uppercase())
+    })
+}
+
 /// Pure: the anonymized judge prompt. Uses only candidate labels (never the CLI
 /// name), includes the task, and truncates each diff.
 pub fn build_prompt(task: &str, candidates: &[Candidate]) -> String {
@@ -75,7 +85,8 @@ pub fn build_prompt(task: &str, candidates: &[Candidate]) -> String {
          are given, weigh them heavily — a candidate whose tests pass beats one \
          that only looks cleaner. Rank them best to worst on test results, \
          correctness, completeness, and code quality. Give a one-line rationale \
-         for each candidate, then name the winner. Be concise.\n\n## Task\n",
+         for each candidate, then name the winner. End your reply with a line \
+         exactly `WINNER: <letter>`. Be concise.\n\n## Task\n",
     );
     s.push_str(task);
     s.push_str("\n\n## Candidates\n");
@@ -245,5 +256,12 @@ mod tests {
         let p = build_prompt("t", &cands);
         assert!(p.contains("Tests: PASS"));
         assert!(p.contains("exit 0 (ok)"));
+    }
+
+    #[test]
+    fn parse_winner_reads_trailing_marker() {
+        assert_eq!(parse_winner("blah\nWINNER: B"), Some("B".to_string()));
+        assert_eq!(parse_winner("WINNER:  aa  \ntrailing"), Some("AA".to_string()));
+        assert_eq!(parse_winner("no marker here"), None);
     }
 }

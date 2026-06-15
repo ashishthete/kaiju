@@ -59,6 +59,7 @@ pub fn routes() -> Router<AppState> {
         .route("/agents/adopt", post(adopt_agent))
         .route("/compare", post(compare))
         .route("/compare/judge", post(compare_judge))
+        .route("/leaderboard", get(leaderboard))
         .route("/health", get(health))
 }
 
@@ -118,6 +119,11 @@ pub struct JudgeRequest {
     pub group_id: String,
     #[serde(default)]
     pub test_cmd: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct LeaderboardQuery {
+    pub workspace: String,
 }
 
 #[derive(Deserialize)]
@@ -714,7 +720,39 @@ async fn compare_judge(
         .collect();
     let prompt = crate::judge::build_prompt(&task, &candidates);
     match crate::judge::run_judge(&workspace, &prompt).await {
-        Ok(verdict) => Ok(Json(serde_json::json!({ "verdict": verdict, "legend": legend }))),
+        Ok(verdict) => {
+            let winner_label = crate::judge::parse_winner(&verdict);
+            let results: Vec<crate::leaderboard::CandidateResult> = agents
+                .iter()
+                .zip(candidates.iter())
+                .enumerate()
+                .map(|(i, (a, c))| crate::leaderboard::CandidateResult {
+                    agent_type: a.agent_type.to_string(),
+                    model: a.model.clone(),
+                    tests_passed: c.test.as_ref().map(|t| t.passed),
+                    is_winner: winner_label.as_deref() == Some(crate::judge::label_for(i).as_str()),
+                })
+                .collect();
+            let _ = crate::leaderboard::record(crate::leaderboard::BakeoffRecord {
+                workspace: workspace.display().to_string(),
+                prompt: task.clone(),
+                at: chrono::Utc::now(),
+                candidates: results,
+            });
+            Ok(Json(serde_json::json!({
+                "verdict": verdict,
+                "legend": legend,
+                "winner": winner_label,
+            })))
+        }
         Err(e) => Err(err(StatusCode::BAD_GATEWAY, &format!("judge unavailable: {e}"))),
     }
+}
+
+/// `GET /leaderboard?workspace=<path>` — model standings for that repo.
+async fn leaderboard(
+    axum::extract::Query(q): axum::extract::Query<LeaderboardQuery>,
+) -> impl IntoResponse {
+    let records = crate::leaderboard::load();
+    Json(crate::leaderboard::standings(&records, &q.workspace))
 }
