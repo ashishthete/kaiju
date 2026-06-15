@@ -104,6 +104,8 @@ pub const PAGE: &str = r#"<!doctype html>
   #detail[hidden] { display: none; }
   #compare-panel { margin-top: 1.5rem; padding: 1.1rem 1.25rem; }
   #compare-panel[hidden] { display: none; }
+  #leaderboard-panel { margin-top: 1.5rem; padding: 1.1rem 1.25rem; }
+  #leaderboard-panel[hidden] { display: none; }
   .detail-head { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
                  position: sticky; top: 0; z-index: 5; background: var(--surface);
                  margin: -1.1rem -1.25rem .85rem; padding: 1.1rem 1.25rem .75rem;
@@ -223,6 +225,7 @@ pub const PAGE: &str = r#"<!doctype html>
     <button class="primary" onclick="toggleNew()">+ New agent</button>
     <button onclick="openAdopt()">Adopt session</button>
     <button onclick="openCompare()">Compare task</button>
+    <button onclick="openLeaderboard()">Leaderboard</button>
     <input id="filter-text" class="filter" placeholder="Search agents…" oninput="applyFilter()" autocomplete="off">
     <select id="filter-status" class="filter" onchange="applyFilter()" title="Filter by status">
       <option value="all">All statuses</option>
@@ -430,6 +433,16 @@ pub const PAGE: &str = r#"<!doctype html>
     </div>
     <div id="cmp-verdict" hidden></div>
     <div id="cmp-cols" class="cmp-cols"></div>
+  </div>
+
+  <div id="leaderboard-panel" class="card" hidden>
+    <div class="detail-head">
+      <span class="id">Leaderboard</span>
+      <input id="lb-ws" placeholder="/path/to/repo" autocomplete="off" style="flex:0 1 22rem" onchange="loadLeaderboard()">
+      <span class="grow"></span>
+      <button onclick="closeLeaderboard()">Close</button>
+    </div>
+    <div id="lb-body"></div>
   </div>
 
 <script src="/assets/dashboard-utils.js"></script>

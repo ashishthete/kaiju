@@ -622,6 +622,7 @@ function closeCompare() {
 
 async function submitCompare() {
   const ws = document.getElementById("cmp-ws").value.trim();
+  localStorage.setItem("kaiju_cmp_ws", ws);
   const prompt = document.getElementById("cmp-prompt").value.trim();
   const types = Array.from(document.querySelectorAll(".cmp-type:checked")).map(c => c.value);
   if (!ws || !prompt || !types.length) { alert("Workspace, prompt, and at least one CLI are required."); return; }
@@ -764,6 +765,17 @@ async function judgeComparison() {
     const legend = (d.legend || []).map(function (l) { return esc(l.label) + " = " + esc(l.agent_type); }).join("  \xb7  ");
     box.innerHTML = '<div class="cmp-legend">' + legend + '</div>' +
       '<pre class="cmp-verdict-text">' + esc(d.verdict) + '</pre>';
+    if (d.winner && d.legend) {
+      const w = d.legend.find(function (l) { return l.label === d.winner; });
+      if (w) {
+        const head = document.querySelector('.cmp-col[data-id="' + w.id + '"] .cmp-col-head');
+        if (head && !head.querySelector(".trophy")) {
+          const t = document.createElement("span");
+          t.className = "trophy"; t.textContent = "🏆"; t.title = "Judge's winner";
+          head.insertBefore(t, head.firstChild);
+        }
+      }
+    }
   } catch (e) { box.textContent = "Judge failed."; }
   btn.disabled = false;
 }
@@ -776,4 +788,30 @@ async function promoteRun(id) {
     if (res.ok) { alert("Promoted — merged branch " + d.branch + " into your workspace."); }
     else { alert(d.error || "Promote failed."); }
   } catch (e) { alert("Promote failed."); }
+}
+
+// --- Leaderboard ---
+
+function openLeaderboard() {
+  document.getElementById("detail").hidden = true;
+  document.getElementById("leaderboard-panel").hidden = false;
+  const ws = document.getElementById("lb-ws");
+  if (!ws.value) ws.value = localStorage.getItem("kaiju_cmp_ws") || "";
+  loadLeaderboard();
+}
+function closeLeaderboard() { document.getElementById("leaderboard-panel").hidden = true; }
+
+async function loadLeaderboard() {
+  const ws = document.getElementById("lb-ws").value.trim();
+  const body = document.getElementById("lb-body");
+  if (!ws) { body.innerHTML = '<div class="empty">Enter a repo path.</div>'; return; }
+  try {
+    const rows = await (await api("/leaderboard?workspace=" + encodeURIComponent(ws))).json();
+    if (!rows.length) { body.innerHTML = '<div class="empty">No judged bake-offs for this repo yet.</div>'; return; }
+    body.innerHTML = '<table><thead><tr><th>Model</th><th>Wins</th><th>Runs</th><th>Tests passed</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        const tests = r.tests_run ? (r.tests_passed + "/" + r.tests_run) : "—";
+        return '<tr><td>' + esc(r.agent_type) + '</td><td>' + r.wins + '</td><td>' + r.runs + '</td><td>' + tests + '</td></tr>';
+      }).join("") + '</tbody></table>';
+  } catch (e) { body.innerHTML = '<div class="empty">Could not load the leaderboard.</div>'; }
 }
