@@ -1,26 +1,38 @@
 # Kaiju
 
-**A unified control plane for terminal-based AI coding agents** — Claude Code,
-Codex, Gemini CLI, and any custom CLI. Kaiju runs each agent in its own tmux
-session, supervises it, and gives you one place to spawn, watch, drive, and
-clean up a whole fleet — from a CLI, an HTTP API, or a live web dashboard.
+**An agent bake-off for your repo.** Run one coding task across several AI CLIs
+at once — Claude Code, Codex, Gemini — each in its own isolated git worktree,
+then let **your tests** decide the winner and **promote** it back into your
+branch. Stop guessing which model is best at *your* codebase; prove it.
 
-## Highlights
+Under the hood it's a local fleet manager for terminal agents (tmux sessions,
+git-worktree isolation, a web dashboard you can reach from your phone), but the
+point is the bake-off: **compare → judge → promote.**
 
-- **One fleet, many agents.** Spawn Claude/Codex/Gemini (or your own CLI) and
-  track them all together with live status, runtime, token, and cost metrics.
-- **Live web dashboard** with a built-in **interactive terminal** per agent
-  (xterm.js over a WebSocket): real-time colored output, and you can type into
-  it — Enter, Ctrl-C, arrows — to answer prompts and approvals.
-- **Supervision built in.** A background monitor flags `waiting-for-input`,
-  `stuck` (output went quiet), `completed`, and `error`, and alerts you once
-  (console bell, and optionally Slack).
-- **Task queue + bounded pool.** Enqueue a backlog and let Kaiju run N agents at
-  a time.
-- **Safe parallelism.** `--isolate` runs an agent in its own git worktree on a
-  `kaiju/<id>` branch, so concurrent agents in one repo don't collide.
+## The bake-off loop
+
+- **Compare across CLIs.** One prompt → N isolated runs (one per CLI), each on
+  its own `kaiju/<id>` worktree branch, side by side with live diffs. No shared
+  state — they can't clobber each other.
+- **Judge, objectively.** A local `claude -p` ranks the runs *anonymized* (so it
+  can't favor a brand), and — when you give it a **test command** — runs your
+  tests in each worktree and weighs pass/fail over looks.
+- **Promote the winner.** One click commits a run's changes and merges its branch
+  into your workspace (refuses a dirty tree, aborts cleanly on conflict).
+
+## Also a capable fleet manager
+
+- **Many agents, one place.** Spawn Claude/Codex/Gemini (or any custom CLI) and
+  track them with live status, runtime, token, and cost metrics.
+- **Live web dashboard + per-agent terminal** (xterm.js over a WebSocket): typed
+  input, Ctrl-C, arrows — answer prompts and approvals in the browser.
+- **Reachable from your phone.** Bind the LAN and pair devices with a QR; each
+  device gets its own revocable token.
+- **Adopt** an existing Claude session by id, a **task queue + bounded pool**,
+  and a background monitor that flags `waiting-for-input` / `stuck` / `error`
+  (console bell, desktop, or Slack).
 - **Self-contained & local-first.** Single daemon binary, no external services,
-  optional bearer-token auth, works offline.
+  works offline, optional auth.
 
 ## Requirements
 
