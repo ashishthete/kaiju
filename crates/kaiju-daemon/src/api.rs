@@ -680,7 +680,10 @@ async fn compare_judge(
         .collect();
     agents.sort_by_key(|a| a.created_at);
     if agents.len() < 2 {
-        return Err(err(StatusCode::BAD_REQUEST, "need at least two runs to judge"));
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "need at least two runs to judge",
+        ));
     }
     let task = agents[0].prompt.clone().unwrap_or_default();
     let workspace = agents[0].workspace.clone();
@@ -696,7 +699,11 @@ async fn compare_judge(
         .iter()
         .map(|a| {
             let d = crate::worktree::WorktreeManager::diff(a.run_dir()).unwrap_or_default();
-            if d.trim().is_empty() { "(no changes)".to_string() } else { d }
+            if d.trim().is_empty() {
+                "(no changes)".to_string()
+            } else {
+                d
+            }
         })
         .collect();
 
@@ -765,7 +772,10 @@ async fn compare_judge(
                 "winner": winner_label,
             })))
         }
-        Err(e) => Err(err(StatusCode::BAD_GATEWAY, &format!("judge unavailable: {e}"))),
+        Err(e) => Err(err(
+            StatusCode::BAD_GATEWAY,
+            &format!("judge unavailable: {e}"),
+        )),
     }
 }
 

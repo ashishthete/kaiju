@@ -180,7 +180,9 @@ fn first_user_prompt(path: &Path) -> String {
         return String::new();
     };
     for line in BufReader::new(file).lines().take(50).map_while(Result::ok) {
-        let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
         if v.get("type").and_then(Value::as_str) != Some("user") {
             continue;
         }
@@ -314,8 +316,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&dir).unwrap();
         let mut f = std::fs::File::create(dir.join("sess-1.jsonl")).unwrap();
-        writeln!(f, r#"{{"type":"user","message":{{"role":"user","content":"refactor the parser"}}}}"#).unwrap();
-        writeln!(f, r#"{{"type":"assistant","message":{{"id":"m1","usage":{{"output_tokens":5}}}}}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"refactor the parser"}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"assistant","message":{{"id":"m1","usage":{{"output_tokens":5}}}}}}"#
+        )
+        .unwrap();
 
         std::env::set_var("KAIJU_CLAUDE_PROJECTS", &tmp);
         let sessions = list_workspace_sessions(ws);
@@ -329,7 +339,10 @@ mod tests {
 
     #[test]
     fn list_workspace_sessions_empty_when_no_dir() {
-        std::env::set_var("KAIJU_CLAUDE_PROJECTS", std::env::temp_dir().join("kaiju-nope-xyz"));
+        std::env::set_var(
+            "KAIJU_CLAUDE_PROJECTS",
+            std::env::temp_dir().join("kaiju-nope-xyz"),
+        );
         let out = list_workspace_sessions(std::path::Path::new("/no/such/ws"));
         std::env::remove_var("KAIJU_CLAUDE_PROJECTS");
         assert!(out.is_empty());

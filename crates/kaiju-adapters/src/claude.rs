@@ -146,11 +146,7 @@ impl Adapter for ClaudeAdapter {
         crate::claude_transcript::list_workspace_sessions(workspace)
     }
 
-    fn resume_session_command(
-        &self,
-        config: &AgentConfig,
-        session_id: &str,
-    ) -> Option<String> {
+    fn resume_session_command(&self, config: &AgentConfig, session_id: &str) -> Option<String> {
         let bin = crate::binary::agent_binary("KAIJU_CLAUDE_BIN", "claude");
         let mut cmd = format!(
             "cd {} && {bin} --resume {session_id}",
@@ -355,7 +351,9 @@ mod tests {
             prompt: None,
             extra_args: vec![],
         };
-        let cmd = ClaudeAdapter.resume_session_command(&cfg, "abc123").unwrap();
+        let cmd = ClaudeAdapter
+            .resume_session_command(&cfg, "abc123")
+            .unwrap();
         assert!(cmd.contains("cd /tmp/repo &&"));
         assert!(cmd.contains("--resume abc123"));
         assert!(cmd.contains("--model claude-opus-4-8"));
@@ -363,6 +361,9 @@ mod tests {
 
     #[test]
     fn auto_approve_uses_skip_permissions() {
-        assert_eq!(ClaudeAdapter.auto_approve_args(), vec!["--dangerously-skip-permissions".to_string()]);
+        assert_eq!(
+            ClaudeAdapter.auto_approve_args(),
+            vec!["--dangerously-skip-permissions".to_string()]
+        );
     }
 }

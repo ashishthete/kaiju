@@ -32,8 +32,7 @@ pub fn authorized(
             let matches = |candidate: &str| {
                 constant_time_eq::constant_time_eq(candidate.as_bytes(), p.as_bytes())
             };
-            shared.as_deref().is_some_and(&matches)
-                || device_tokens.iter().any(|t| matches(t))
+            shared.as_deref().is_some_and(&matches) || device_tokens.iter().any(|t| matches(t))
         }
     }
 }
@@ -87,7 +86,12 @@ pub async fn require_auth(
     let loopback = is_loopback(peer.map(|c| c.0));
     let tokens = state.devices.read().expect("devices lock").tokens();
 
-    if authorized(loopback, &state.auth_token, &tokens, provided_owned.as_deref()) {
+    if authorized(
+        loopback,
+        &state.auth_token,
+        &tokens,
+        provided_owned.as_deref(),
+    ) {
         // Only bump last_seen when the token matched a *device* (not the shared
         // token or a loopback request with no token). Reuses the tokens we
         // already read above — no second lock acquisition for the common case.
@@ -122,13 +126,23 @@ mod tests {
     #[test]
     fn remote_without_token_is_rejected() {
         assert!(!authorized(false, &None, &[], None));
-        assert!(!authorized(false, &Some("secret".into()), &[], Some("wrong")));
+        assert!(!authorized(
+            false,
+            &Some("secret".into()),
+            &[],
+            Some("wrong")
+        ));
         assert!(!authorized(false, &None, &["dev-a".into()], Some("dev-b")));
     }
 
     #[test]
     fn remote_with_shared_token_is_allowed() {
-        assert!(authorized(false, &Some("secret".into()), &[], Some("secret")));
+        assert!(authorized(
+            false,
+            &Some("secret".into()),
+            &[],
+            Some("secret")
+        ));
     }
 
     #[test]
@@ -141,8 +155,14 @@ mod tests {
     fn loopback_helper_treats_none_and_loopback_as_local() {
         use std::net::{Ipv4Addr, SocketAddr};
         assert!(is_loopback(None));
-        assert!(is_loopback(Some(SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 7800))));
-        assert!(!is_loopback(Some(SocketAddr::new(Ipv4Addr::new(192, 168, 1, 5).into(), 7800))));
+        assert!(is_loopback(Some(SocketAddr::new(
+            Ipv4Addr::LOCALHOST.into(),
+            7800
+        ))));
+        assert!(!is_loopback(Some(SocketAddr::new(
+            Ipv4Addr::new(192, 168, 1, 5).into(),
+            7800
+        ))));
     }
 
     #[test]

@@ -137,6 +137,9 @@ mod tests {
 
     #[test]
     fn auto_approve_uses_full_auto() {
-        assert_eq!(CodexAdapter.auto_approve_args(), vec!["--full-auto".to_string()]);
+        assert_eq!(
+            CodexAdapter.auto_approve_args(),
+            vec!["--full-auto".to_string()]
+        );
     }
 }

@@ -48,10 +48,8 @@ fn remote_request(uri: &str) -> Request<Body> {
 /// A remote request that also presents a bearer token.
 fn remote_request_with_token(uri: &str, token: &str) -> Request<Body> {
     let mut req = remote_request(uri);
-    req.headers_mut().insert(
-        "authorization",
-        format!("Bearer {token}").parse().unwrap(),
-    );
+    req.headers_mut()
+        .insert("authorization", format!("Bearer {token}").parse().unwrap());
     req
 }
 
@@ -545,11 +543,12 @@ async fn list_devices_returns_paired_without_tokens() {
 async fn revoke_device_removes_it() {
     isolate_devices_path("revoke_device");
     let state = AppState::new();
-    let dev = state
-        .devices
-        .write()
-        .unwrap()
-        .add("Phone".into(), "tok-xyz".into(), chrono::Utc::now());
+    let dev =
+        state
+            .devices
+            .write()
+            .unwrap()
+            .add("Phone".into(), "tok-xyz".into(), chrono::Utc::now());
     let app = build_app(state.clone());
     let resp = app
         .oneshot(
@@ -608,20 +607,28 @@ async fn adopt_rejects_session_id_with_shell_metachars() {
 #[tokio::test]
 async fn compare_rejects_empty_agent_types() {
     let app = build_app(AppState::new());
-    let resp = app.oneshot(json_request(
-        "POST", "/compare",
-        serde_json::json!({ "workspace": "/tmp/x", "prompt": "do X", "agent_types": [] }),
-    )).await.unwrap();
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/compare",
+            serde_json::json!({ "workspace": "/tmp/x", "prompt": "do X", "agent_types": [] }),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
 async fn compare_rejects_blank_prompt() {
     let app = build_app(AppState::new());
-    let resp = app.oneshot(json_request(
-        "POST", "/compare",
-        serde_json::json!({ "workspace": "/tmp/x", "prompt": "", "agent_types": ["claude"] }),
-    )).await.unwrap();
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/compare",
+            serde_json::json!({ "workspace": "/tmp/x", "prompt": "", "agent_types": ["claude"] }),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
@@ -642,13 +649,19 @@ async fn agent_response_includes_compare_group_field() {
     use kaiju_core::agent::{Agent, AgentConfig, AgentType};
     let state = AppState::new();
     let agent = Agent::new(AgentConfig {
-        agent_type: AgentType::Claude, model: None,
-        workspace: std::path::PathBuf::from("/tmp"), prompt: None, extra_args: vec![],
+        agent_type: AgentType::Claude,
+        model: None,
+        workspace: std::path::PathBuf::from("/tmp"),
+        prompt: None,
+        extra_args: vec![],
     });
     let id = agent.id.clone();
     state.store.insert(agent);
     let app = build_app(state);
-    let resp = app.oneshot(get_request(&format!("/agents/{id}"))).await.unwrap();
+    let resp = app
+        .oneshot(get_request(&format!("/agents/{id}")))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json = body_json(resp).await;
     assert!(json.get("compare_group").is_some());
@@ -672,7 +685,11 @@ async fn compare_rejects_blank_agent_type_entry() {
 async fn judge_rejects_group_with_fewer_than_two_runs() {
     let app = build_app(AppState::new());
     let resp = app
-        .oneshot(json_request("POST", "/compare/judge", serde_json::json!({ "group_id": "nope" })))
+        .oneshot(json_request(
+            "POST",
+            "/compare/judge",
+            serde_json::json!({ "group_id": "nope" }),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -716,14 +733,21 @@ async fn promote_non_isolated_agent_is_rejected() {
     use kaiju_core::agent::{Agent, AgentConfig, AgentType};
     let state = AppState::new();
     let agent = Agent::new(AgentConfig {
-        agent_type: AgentType::Claude, model: None,
-        workspace: std::path::PathBuf::from("/tmp"), prompt: None, extra_args: vec![],
+        agent_type: AgentType::Claude,
+        model: None,
+        workspace: std::path::PathBuf::from("/tmp"),
+        prompt: None,
+        extra_args: vec![],
     });
     let id = agent.id.clone();
     state.store.insert(agent);
     let app = build_app(state);
     let resp = app
-        .oneshot(json_request("POST", &format!("/agents/{id}/promote"), serde_json::json!({})))
+        .oneshot(json_request(
+            "POST",
+            &format!("/agents/{id}/promote"),
+            serde_json::json!({}),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -740,16 +764,29 @@ async fn create_with_auto_approve_injects_flag() {
         .await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
     let agent = state.store.list().into_iter().next().unwrap();
-    assert!(agent.extra_args.iter().any(|a| a == "--dangerously-skip-permissions"));
+    assert!(agent
+        .extra_args
+        .iter()
+        .any(|a| a == "--dangerously-skip-permissions"));
 }
 
 #[tokio::test]
 async fn create_without_auto_approve_has_no_flag() {
     let state = AppState::new();
     let app = build_app(state.clone());
-    let _ = app.oneshot(json_request("POST", "/agents", serde_json::json!({
-        "agent_type": "claude", "workspace": "/tmp/x", "auto_start": false
-    }))).await.unwrap();
+    let _ = app
+        .oneshot(json_request(
+            "POST",
+            "/agents",
+            serde_json::json!({
+                "agent_type": "claude", "workspace": "/tmp/x", "auto_start": false
+            }),
+        ))
+        .await
+        .unwrap();
     let agent = state.store.list().into_iter().next().unwrap();
-    assert!(!agent.extra_args.iter().any(|a| a == "--dangerously-skip-permissions"));
+    assert!(!agent
+        .extra_args
+        .iter()
+        .any(|a| a == "--dangerously-skip-permissions"));
 }

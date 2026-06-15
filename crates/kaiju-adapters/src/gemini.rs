@@ -122,6 +122,9 @@ mod tests {
 
     #[test]
     fn auto_approve_uses_yolo() {
-        assert_eq!(GeminiAdapter.auto_approve_args(), vec!["--yolo".to_string()]);
+        assert_eq!(
+            GeminiAdapter.auto_approve_args(),
+            vec!["--yolo".to_string()]
+        );
     }
 }

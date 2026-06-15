@@ -72,7 +72,11 @@ pub fn label_for(mut index: usize) -> String {
 pub fn parse_winner(verdict: &str) -> Option<String> {
     verdict.lines().rev().find_map(|line| {
         let rest = line.trim().strip_prefix("WINNER:")?;
-        let label: String = rest.trim().chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+        let label: String = rest
+            .trim()
+            .chars()
+            .take_while(|c| c.is_ascii_alphabetic())
+            .collect();
         (!label.is_empty()).then(|| label.to_uppercase())
     })
 }
@@ -155,7 +159,12 @@ pub async fn run_tests(workdir: &Path, cmd: &str) -> TestSummary {
         .spawn()
     {
         Ok(c) => c,
-        Err(e) => return TestSummary { passed: false, summary: format!("could not run tests: {e}") },
+        Err(e) => {
+            return TestSummary {
+                passed: false,
+                summary: format!("could not run tests: {e}"),
+            }
+        }
     };
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -193,10 +202,16 @@ pub async fn run_tests(workdir: &Path, cmd: &str) -> TestSummary {
                 summary: format!("exit {}\n{}", status.code().unwrap_or(-1), tail.trim()),
             }
         }
-        Ok((Err(e), _, _)) => TestSummary { passed: false, summary: format!("could not run tests: {e}") },
+        Ok((Err(e), _, _)) => TestSummary {
+            passed: false,
+            summary: format!("could not run tests: {e}"),
+        },
         // Timeout: `work` is dropped (releasing its &mut borrow), then `child`
         // drops at end of scope — kill_on_drop sends SIGKILL.
-        Err(_) => TestSummary { passed: false, summary: "tests timed out (300s)".to_string() },
+        Err(_) => TestSummary {
+            passed: false,
+            summary: "tests timed out (300s)".to_string(),
+        },
     }
 }
 
@@ -228,8 +243,18 @@ mod tests {
     #[test]
     fn prompt_is_anonymized_and_has_task() {
         let cands = vec![
-            Candidate { label: "A".into(), agent_type: "claude".into(), diff: "+ fn a() {}".into(), test: None },
-            Candidate { label: "B".into(), agent_type: "codex".into(), diff: "+ fn b() {}".into(), test: None },
+            Candidate {
+                label: "A".into(),
+                agent_type: "claude".into(),
+                diff: "+ fn a() {}".into(),
+                test: None,
+            },
+            Candidate {
+                label: "B".into(),
+                agent_type: "codex".into(),
+                diff: "+ fn b() {}".into(),
+                test: None,
+            },
         ];
         let p = build_prompt("add a function", &cands);
         assert!(p.contains("add a function"));
@@ -242,7 +267,12 @@ mod tests {
     #[test]
     fn long_diff_is_truncated() {
         let big = "x".repeat(DIFF_CAP_CHARS + 500);
-        let cands = vec![Candidate { label: "A".into(), agent_type: "claude".into(), diff: big, test: None }];
+        let cands = vec![Candidate {
+            label: "A".into(),
+            agent_type: "claude".into(),
+            diff: big,
+            test: None,
+        }];
         let p = build_prompt("t", &cands);
         assert!(p.contains("…[truncated]"));
     }
@@ -250,8 +280,13 @@ mod tests {
     #[test]
     fn prompt_includes_test_outcome_when_present() {
         let cands = vec![Candidate {
-            label: "A".into(), agent_type: "claude".into(), diff: "+x".into(),
-            test: Some(TestSummary { passed: true, summary: "exit 0 (ok)".into() }),
+            label: "A".into(),
+            agent_type: "claude".into(),
+            diff: "+x".into(),
+            test: Some(TestSummary {
+                passed: true,
+                summary: "exit 0 (ok)".into(),
+            }),
         }];
         let p = build_prompt("t", &cands);
         assert!(p.contains("Tests: PASS"));
@@ -261,7 +296,10 @@ mod tests {
     #[test]
     fn parse_winner_reads_trailing_marker() {
         assert_eq!(parse_winner("blah\nWINNER: B"), Some("B".to_string()));
-        assert_eq!(parse_winner("WINNER:  aa  \ntrailing"), Some("AA".to_string()));
+        assert_eq!(
+            parse_winner("WINNER:  aa  \ntrailing"),
+            Some("AA".to_string())
+        );
         assert_eq!(parse_winner("no marker here"), None);
     }
 }

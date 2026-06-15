@@ -61,9 +61,9 @@ impl AppState {
             settings: std::sync::Arc::new(std::sync::RwLock::new(
                 crate::settings::Settings::default(),
             )),
-            devices: std::sync::Arc::new(std::sync::RwLock::new(
-                crate::devices::Devices::default(),
-            )),
+            devices: std::sync::Arc::new(
+                std::sync::RwLock::new(crate::devices::Devices::default()),
+            ),
             pending_codes: std::sync::Arc::new(std::sync::Mutex::new(
                 crate::pairing::PendingCodes::default(),
             )),
@@ -421,7 +421,11 @@ pub fn spawn_compare_group(
     for type_str in agent_types {
         let agent_type: kaiju_core::agent::AgentType = type_str.parse().expect("infallible");
         let extra_args = if auto_approve {
-            state.adapters.get(&agent_type).map(|a| a.auto_approve_args()).unwrap_or_default()
+            state
+                .adapters
+                .get(&agent_type)
+                .map(|a| a.auto_approve_args())
+                .unwrap_or_default()
         } else {
             vec![]
         };
