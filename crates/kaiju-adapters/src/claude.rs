@@ -160,6 +160,10 @@ impl Adapter for ClaudeAdapter {
         }
         Some(cmd)
     }
+
+    fn ensure_trusted(&self, run_dir: &std::path::Path) {
+        crate::trust::ensure_claude_trust(run_dir);
+    }
 }
 
 #[cfg(test)]

@@ -240,6 +240,10 @@ pub fn start_agent_internal(state: &AppState, id: &str) -> Result<()> {
     // isolation was requested, otherwise the workspace directly.
     let run_dir = prepare_run_dir(state, &agent)?;
 
+    // Pre-trust the run directory in the CLI's own trust store so its first-run
+    // folder-trust prompt doesn't stall an unattended / bake-off launch.
+    adapter.ensure_trusted(&run_dir);
+
     let config = kaiju_core::agent::AgentConfig {
         agent_type: agent.agent_type.clone(),
         model: agent.model.clone(),

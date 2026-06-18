@@ -234,6 +234,12 @@ pub trait Adapter: Send + Sync {
     fn auto_approve_args(&self) -> Vec<String> {
         Vec::new()
     }
+
+    /// Pre-authorize `run_dir` in this CLI's own trust store so its first-run
+    /// "do you trust this folder?" prompt doesn't stall an unattended launch
+    /// (isolated runs use a brand-new worktree the CLI has never seen).
+    /// Best-effort and side-effecting; the default does nothing.
+    fn ensure_trusted(&self, _run_dir: &std::path::Path) {}
 }
 
 #[cfg(test)]
