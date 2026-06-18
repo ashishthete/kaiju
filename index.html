@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kaiju — An agent bake-off for your repo</title>
+<meta name="description" content="Run one coding task across Claude Code, Codex and Gemini at once — each in its own git worktree — then let your tests judge the winner and promote it back into your branch." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;500;700&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     KAIJU — "Atomic Ink" : tokusatsu terminal / cinematic dark
+     Display: Anton + Bricolage Grotesque · Mono: JetBrains Mono
+     Body: Newsreader (editorial serif) · Accents: atomic teal + ember
+     ============================================================ */
+
+  :root{
+    --ink:      #07090a;
+    --ink-2:    #0d1316;
+    --ink-3:    #121b1f;
+    --line:     #1e2b30;
+    --paper:    #eef2ec;
+    --muted:    #7c8a85;
+    --muted-2:  #56635e;
+    --glow:     #5ef0c6;   /* atomic breath teal */
+    --glow-dim: #2b9d80;
+    --ember:    #ff7a45;   /* alert / ember */
+    --ember-dim:#b8502b;
+    --violet:   #9b8cff;
+    --maxw: 1180px;
+    --read: 720px;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html{ scroll-behavior:smooth; }
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:"Newsreader", Georgia, serif;
+    font-size:19px;
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+    position:relative;
+  }
+
+  /* --- atmosphere: grain + ambient glows ----------------------- */
+  body::before{
+    content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(900px 600px at 78% -5%, rgba(94,240,198,.10), transparent 60%),
+      radial-gradient(700px 500px at 10% 8%, rgba(155,140,255,.07), transparent 55%),
+      radial-gradient(800px 700px at 50% 120%, rgba(255,122,69,.06), transparent 60%);
+  }
+  .grain{
+    position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.05;
+    mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+  .scanlines{
+    position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.35;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,.16) 3px, rgba(0,0,0,0) 4px);
+  }
+
+  main{ position:relative; z-index:2; }
+
+  /* --- typography --------------------------------------------- */
+  .kicker{
+    font-family:"JetBrains Mono", monospace;
+    font-size:12px; letter-spacing:.34em; text-transform:uppercase;
+    color:var(--glow); font-weight:500;
+  }
+  h2{
+    font-family:"Bricolage Grotesque", sans-serif;
+    font-weight:800; font-size:clamp(2rem, 5vw, 3.4rem); line-height:1.02;
+    letter-spacing:-.02em; color:var(--paper); margin:.4em 0 .5em;
+  }
+  h3{
+    font-family:"Bricolage Grotesque", sans-serif;
+    font-weight:600; font-size:1.28rem; letter-spacing:-.01em; color:var(--paper);
+  }
+  p{ color:#c9d2cd; }
+  p strong{ color:var(--paper); font-weight:600; }
+  em{ font-style:italic; color:#dfe6e1; }
+  a{ color:var(--glow); text-decoration:none; }
+  .lede{ font-size:1.4rem; line-height:1.55; color:#d8e0db; }
+  .mono{ font-family:"JetBrains Mono", monospace; }
+  code{
+    font-family:"JetBrains Mono", monospace; font-size:.82em;
+    background:var(--ink-3); color:var(--glow); padding:.12em .42em;
+    border-radius:5px; border:1px solid var(--line); white-space:nowrap;
+  }
+
+  section{ padding:clamp(64px, 9vw, 130px) 28px; }
+  .wrap{ max-width:var(--maxw); margin:0 auto; }
+  .read{ max-width:var(--read); margin:0 auto; }
+
+  /* ====================== HERO ================================ */
+  .hero{
+    min-height:100vh; display:flex; flex-direction:column; justify-content:center;
+    padding:80px 28px 60px; position:relative; overflow:hidden;
+  }
+  .hero-inner{ max-width:var(--maxw); margin:0 auto; width:100%; position:relative; z-index:3; }
+  .hero .tag{ margin-bottom:26px; display:flex; align-items:center; gap:14px; }
+  .pulse-dot{
+    width:9px; height:9px; border-radius:50%; background:var(--glow);
+    box-shadow:0 0 0 0 rgba(94,240,198,.7); animation:beat 2.4s infinite;
+  }
+  @keyframes beat{
+    0%{ box-shadow:0 0 0 0 rgba(94,240,198,.55);}
+    70%{ box-shadow:0 0 0 16px rgba(94,240,198,0);}
+    100%{ box-shadow:0 0 0 0 rgba(94,240,198,0);}
+  }
+  .wordmark{
+    font-family:"Anton", sans-serif; font-weight:400;
+    font-size:clamp(5rem, 22vw, 19rem); line-height:.82; letter-spacing:-.02em;
+    text-transform:uppercase; margin:0; position:relative;
+    background:linear-gradient(176deg, #ffffff 8%, #bfeede 42%, var(--glow) 78%, var(--glow-dim) 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 6px 40px rgba(94,240,198,.22));
+  }
+  .wordmark .jp{
+    display:block; font-family:"Anton",sans-serif;
+    font-size:clamp(1.1rem,3.4vw,2.2rem); letter-spacing:.5em; line-height:1;
+    -webkit-text-fill-color:var(--muted); color:var(--muted);
+    margin-bottom:10px; padding-left:.3em;
+  }
+  .hero h1.sub{
+    font-family:"Bricolage Grotesque", sans-serif; font-weight:800;
+    font-size:clamp(1.5rem, 4.2vw, 3rem); line-height:1.04; letter-spacing:-.02em;
+    max-width:18ch; margin:32px 0 0; color:var(--paper);
+  }
+  .hero h1.sub .hl{ color:var(--glow); }
+  .hero .blurb{ max-width:54ch; margin-top:22px; color:#c4cdc8; font-size:1.18rem; }
+  .cta-row{ display:flex; gap:16px; flex-wrap:wrap; margin-top:38px; align-items:center; }
+  .btn{
+    font-family:"JetBrains Mono", monospace; font-size:13px; letter-spacing:.06em;
+    text-transform:uppercase; padding:15px 26px; border-radius:10px; font-weight:500;
+    border:1px solid var(--line); transition:.25s; display:inline-flex; gap:10px; align-items:center;
+  }
+  .btn.primary{ background:var(--glow); color:#04120d; border-color:var(--glow); font-weight:700; }
+  .btn.primary:hover{ box-shadow:0 0 30px rgba(94,240,198,.45); transform:translateY(-2px); }
+  .btn.ghost{ color:var(--paper); background:rgba(255,255,255,.02); }
+  .btn.ghost:hover{ border-color:var(--glow); color:var(--glow); transform:translateY(-2px); }
+  .scroll-cue{
+    position:absolute; bottom:30px; left:50%; transform:translateX(-50%);
+    font-family:"JetBrains Mono",monospace; font-size:11px; letter-spacing:.3em;
+    color:var(--muted-2); text-transform:uppercase; z-index:3; text-align:center;
+  }
+  .scroll-cue span{ display:block; font-size:18px; margin-top:6px; animation:bob 2s infinite; color:var(--glow); }
+  @keyframes bob{ 0%,100%{ transform:translateY(0);} 50%{ transform:translateY(6px);} }
+
+  /* atomic backdrop rings in hero */
+  .atomic{ position:absolute; right:-10%; top:50%; transform:translateY(-50%); z-index:1; opacity:.5; }
+  .atomic circle{ fill:none; stroke:var(--glow); }
+  .ring-spin{ transform-origin:center; animation:spin 26s linear infinite; }
+  .ring-spin.rev{ animation-duration:38s; animation-direction:reverse; }
+  @keyframes spin{ to{ transform:rotate(360deg);} }
+
+  /* ====================== shared section bits ================= */
+  .eyebrow-row{ display:flex; align-items:center; gap:18px; margin-bottom:8px; }
+  .eyebrow-row .rule{ height:1px; flex:1; background:linear-gradient(90deg,var(--line),transparent); }
+
+  .reveal{ opacity:0; transform:translateY(28px); transition:opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
+  .reveal.in{ opacity:1; transform:none; }
+
+  /* ====================== PROBLEM ============================= */
+  .problem{ background:linear-gradient(180deg, var(--ink), var(--ink-2)); border-top:1px solid var(--line); }
+  .quote-big{
+    font-family:"Bricolage Grotesque",sans-serif; font-weight:800;
+    font-size:clamp(1.8rem,4.6vw,3.1rem); line-height:1.08; letter-spacing:-.02em;
+    margin:0 auto; max-width:18ch; text-align:center; color:var(--paper);
+  }
+  .quote-big .strike{ color:var(--muted-2); text-decoration:line-through; text-decoration-color:var(--ember); }
+  .quote-big .pop{ color:var(--glow); }
+  .problem .read p{ font-size:1.18rem; }
+
+  /* ====================== LOOP DIAGRAM ======================== */
+  .loop-stage{ display:grid; grid-template-columns:1.05fr .95fr; gap:54px; align-items:center; }
+  @media(max-width:920px){ .loop-stage{ grid-template-columns:1fr; gap:30px; } }
+  .loop-svg-card{
+    background:radial-gradient(120% 120% at 50% 0%, var(--ink-3), var(--ink-2));
+    border:1px solid var(--line); border-radius:22px; padding:24px; position:relative; overflow:hidden;
+  }
+  .loop-steps li{ list-style:none; display:flex; gap:18px; padding:18px 0; border-bottom:1px dashed var(--line); }
+  .loop-steps li:last-child{ border-bottom:none; }
+  .loop-steps .num{
+    font-family:"Anton",sans-serif; font-size:1.5rem; color:var(--ink);
+    background:var(--glow); width:42px; height:42px; flex:none; border-radius:11px;
+    display:grid; place-items:center; box-shadow:0 0 22px rgba(94,240,198,.3);
+  }
+  .loop-steps li:nth-child(2) .num{ background:var(--violet); box-shadow:0 0 22px rgba(155,140,255,.3); }
+  .loop-steps li:nth-child(3) .num{ background:var(--ember); box-shadow:0 0 22px rgba(255,122,69,.3); }
+  .loop-steps li:nth-child(4) .num{ background:#e9eee9; box-shadow:0 0 22px rgba(255,255,255,.15); }
+  .loop-steps p{ font-size:1rem; color:#aab4af; margin-top:2px; }
+
+  /* traveling pulse on the loop path */
+  .flow-path{ fill:none; stroke:var(--line); stroke-width:2; }
+  .flow-active{ fill:none; stroke:var(--glow); stroke-width:2.5;
+    stroke-dasharray:10 10; animation:march 1.4s linear infinite; opacity:.85; }
+  @keyframes march{ to{ stroke-dashoffset:-40; } }
+  .node-ring{ fill:var(--ink-2); stroke-width:2.5; }
+  .node-lbl{ font-family:"JetBrains Mono",monospace; font-size:12.5px; fill:var(--paper); font-weight:500; letter-spacing:.04em; }
+  .node-sub{ font-family:"JetBrains Mono",monospace; font-size:9px; fill:var(--muted); letter-spacing:.1em; }
+  .pulse-travel{ fill:var(--glow); filter:drop-shadow(0 0 6px var(--glow)); offset-path:path('M 200 56 A 144 144 0 0 1 344 200 A 144 144 0 0 1 200 344 A 144 144 0 0 1 56 200 A 144 144 0 0 1 200 56'); animation:travel 7s linear infinite; }
+  @keyframes travel{ to{ offset-distance:100%; } }
+
+  /* ====================== FEATURE GRID ======================== */
+  .grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+  @media(max-width:900px){ .grid{ grid-template-columns:1fr 1fr; } }
+  @media(max-width:600px){ .grid{ grid-template-columns:1fr; } }
+  .card{
+    background:linear-gradient(180deg, var(--ink-2), var(--ink));
+    border:1px solid var(--line); border-radius:16px; padding:26px 24px;
+    transition:.3s; position:relative; overflow:hidden;
+  }
+  .card::after{ content:""; position:absolute; inset:0; border-radius:16px; padding:1px;
+    background:linear-gradient(140deg, transparent, rgba(94,240,198,.0)); opacity:0; transition:.3s; }
+  .card:hover{ transform:translateY(-5px); border-color:var(--glow-dim); box-shadow:0 18px 50px rgba(0,0,0,.5); }
+  .card .ico{ font-size:24px; margin-bottom:14px; display:block; }
+  .card h3{ font-size:1.08rem; margin-bottom:8px; }
+  .card p{ font-size:.96rem; color:#9aa49f; line-height:1.55; }
+  .card .tagm{ font-family:"JetBrains Mono",monospace; font-size:10px; letter-spacing:.18em; color:var(--glow-dim); text-transform:uppercase; display:block; margin-bottom:14px; }
+
+  /* ====================== DASHBOARD MOCK ====================== */
+  .device{
+    background:var(--ink-2); border:1px solid var(--line); border-radius:16px; overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.55); max-width:960px; margin:0 auto;
+  }
+  .device .bar{ display:flex; align-items:center; gap:8px; padding:12px 16px; background:var(--ink-3); border-bottom:1px solid var(--line); }
+  .dot3{ width:11px; height:11px; border-radius:50%; }
+  .dot3.r{ background:#ff5f57; } .dot3.y{ background:#febc2e; } .dot3.g{ background:#28c840; }
+  .device .url{ font-family:"JetBrains Mono",monospace; font-size:11px; color:var(--muted); margin-left:14px; }
+  .dash{ padding:20px; display:grid; gap:12px; }
+  .agent-row{
+    display:grid; grid-template-columns:auto 1fr auto auto auto; gap:16px; align-items:center;
+    background:var(--ink); border:1px solid var(--line); border-radius:11px; padding:14px 18px;
+    font-family:"JetBrains Mono",monospace; font-size:13px;
+  }
+  .st{ display:inline-flex; align-items:center; gap:8px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+  .st .d{ width:8px; height:8px; border-radius:50%; }
+  .st.run .d{ background:var(--glow); animation:beat 1.8s infinite; } .st.run{ color:var(--glow); }
+  .st.wait .d{ background:var(--ember); animation:beat 1.1s infinite; } .st.wait{ color:var(--ember); }
+  .st.done .d{ background:var(--muted); } .st.done{ color:var(--muted); }
+  .agent-row .nm{ color:var(--paper); }
+  .agent-row .meta{ color:var(--muted); }
+  .badge{ font-size:10px; padding:3px 9px; border-radius:20px; border:1px solid var(--line); color:var(--muted); }
+  .badge.cl{ color:var(--glow); border-color:var(--glow-dim); }
+  .badge.cx{ color:var(--violet); border-color:#564f8a; }
+  .badge.gm{ color:var(--ember); border-color:var(--ember-dim); }
+  .winner{ border-color:var(--glow); box-shadow:0 0 0 1px var(--glow-dim), 0 0 30px rgba(94,240,198,.12); }
+  .winner-tag{ font-size:10px; color:#04120d; background:var(--glow); padding:3px 9px; border-radius:20px; font-weight:700; }
+
+  /* ====================== ARCHITECTURE ======================== */
+  .arch-card{ background:radial-gradient(120% 130% at 50% -10%, var(--ink-3), var(--ink)); border:1px solid var(--line); border-radius:22px; padding:18px; overflow-x:auto; }
+  .arch-lbl{ font-family:"JetBrains Mono",monospace; }
+  .crate-list{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:30px; }
+  @media(max-width:700px){ .crate-list{ grid-template-columns:1fr; } }
+  .crate{ border:1px solid var(--line); border-radius:13px; padding:18px 20px; background:var(--ink-2); }
+  .crate .nm{ font-family:"JetBrains Mono",monospace; color:var(--glow); font-size:13px; font-weight:700; }
+  .crate p{ font-size:.92rem; color:#9aa49f; margin-top:6px; }
+
+  .a-box{ fill:var(--ink-2); stroke:var(--line); stroke-width:1.5; rx:10; }
+  .a-box.hi{ stroke:var(--glow-dim); }
+  .a-t{ font-family:"JetBrains Mono",monospace; fill:var(--paper); font-size:13px; font-weight:500; }
+  .a-s{ font-family:"JetBrains Mono",monospace; fill:var(--muted); font-size:10px; }
+  .a-wire{ fill:none; stroke:var(--line); stroke-width:2; }
+  .a-wire.live{ stroke:var(--glow); stroke-width:2; stroke-dasharray:8 9; animation:march 1.3s linear infinite; opacity:.9; }
+  .a-wire.ember{ stroke:var(--ember); stroke-dasharray:6 8; animation:march 1.6s linear infinite; opacity:.8; }
+
+  /* ====================== STEPS (how a run works) ============= */
+  .steps{ counter-reset:s; display:grid; gap:2px; }
+  .step{ display:grid; grid-template-columns:78px 1fr; gap:22px; padding:26px 0; border-bottom:1px solid var(--line); align-items:start; }
+  .step:last-child{ border-bottom:none; }
+  .step .n{ counter-increment:s; font-family:"Anton",sans-serif; font-size:2.6rem; line-height:1;
+    color:transparent; -webkit-text-stroke:1.4px var(--glow-dim); }
+  .step:hover .n{ -webkit-text-stroke-color:var(--glow); }
+  .step .n::before{ content:"0" counter(s); }
+  .step h3{ margin-bottom:6px; }
+  .step p{ font-size:1rem; color:#a3ada8; }
+
+  /* ====================== ENGINEERING NOTES ================== */
+  .note-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media(max-width:780px){ .note-grid{ grid-template-columns:1fr; } }
+  .note{ border:1px solid var(--line); border-radius:16px; padding:28px; background:linear-gradient(180deg,var(--ink-2),var(--ink)); }
+  .note .tagm{ font-family:"JetBrains Mono",monospace; font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ember); margin-bottom:12px; display:block; }
+  .note h3{ margin-bottom:10px; }
+  .note p{ font-size:.98rem; color:#a3ada8; }
+  pre{ background:var(--ink); border:1px solid var(--line); border-left:3px solid var(--glow-dim);
+    border-radius:10px; padding:16px 18px; overflow-x:auto; margin-top:16px; }
+  pre code{ background:none; border:none; padding:0; color:#cfe9df; font-size:12.5px; line-height:1.7; white-space:pre; }
+  .c-kw{ color:var(--violet); } .c-fn{ color:var(--glow); } .c-str{ color:var(--ember); } .c-com{ color:var(--muted-2); font-style:italic; }
+
+  /* ====================== STATS / TECH ======================= */
+  .stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px; }
+  @media(max-width:760px){ .stats{ grid-template-columns:1fr 1fr; } }
+  .stat{ text-align:center; border:1px solid var(--line); border-radius:14px; padding:30px 16px; background:var(--ink-2); }
+  .stat .big{ font-family:"Anton",sans-serif; font-size:2.8rem; line-height:1;
+    background:linear-gradient(180deg,#fff,var(--glow)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .stat .lab{ font-family:"JetBrains Mono",monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-top:8px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-top:34px; }
+  .chip{ font-family:"JetBrains Mono",monospace; font-size:12px; padding:8px 16px; border:1px solid var(--line);
+    border-radius:30px; color:var(--muted); background:var(--ink-2); }
+  .chip:hover{ border-color:var(--glow-dim); color:var(--glow); }
+
+  /* ====================== FOOTER / CTA ======================= */
+  .final{ text-align:center; background:radial-gradient(120% 90% at 50% 120%, rgba(94,240,198,.08), transparent 60%); border-top:1px solid var(--line); }
+  .final h2{ max-width:16ch; margin:0 auto .4em; }
+  footer{ padding:40px 28px 60px; text-align:center; border-top:1px solid var(--line); color:var(--muted-2); }
+  footer .mono{ font-size:12px; letter-spacing:.1em; }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation:none !important; transition:none !important; }
+    .reveal{ opacity:1; transform:none; }
+  }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="scanlines"></div>
+
+<main>
+
+  <!-- ===================== HERO ===================== -->
+  <header class="hero">
+    <svg class="atomic" width="640" height="640" viewBox="0 0 640 640" aria-hidden="true">
+      <g class="ring-spin">
+        <circle cx="320" cy="320" r="300" stroke-opacity=".18"/>
+        <circle cx="320" cy="320" r="300" stroke-dasharray="2 26" stroke-opacity=".5"/>
+      </g>
+      <g class="ring-spin rev">
+        <circle cx="320" cy="320" r="232" stroke-opacity=".12"/>
+        <circle cx="320" cy="320" r="232" stroke-dasharray="1 40" stroke-opacity=".6"/>
+      </g>
+      <g class="ring-spin">
+        <circle cx="320" cy="320" r="160" stroke-opacity=".22" stroke-dasharray="60 40"/>
+      </g>
+    </svg>
+
+    <div class="hero-inner">
+      <div class="tag">
+        <span class="pulse-dot"></span>
+        <span class="kicker">Local-first · Rust · Open source</span>
+      </div>
+
+      <p class="wordmark"><span class="jp">怪獣</span>KAIJU</p>
+
+      <h1 class="sub">An agent bake-off <span class="hl">for your repo.</span></h1>
+      <p class="blurb">Run one coding task across Claude&nbsp;Code, Codex and Gemini at once — each in its own isolated git worktree — then let <em>your tests</em> decide the winner and promote it back into your branch. Stop guessing which model is best at <em>your</em> codebase. Prove it.</p>
+
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/" target="_blank" rel="noopener">★ View on GitHub</a>
+        <a class="btn ghost" href="#loop">See the bake-off →</a>
+      </div>
+    </div>
+
+    <div class="scroll-cue">scroll<span>↓</span></div>
+  </header>
+
+  <!-- ===================== PROBLEM ===================== -->
+  <section class="problem">
+    <div class="read">
+      <div class="eyebrow-row reveal"><span class="kicker">The problem</span><span class="rule"></span></div>
+      <p class="quote-big reveal" style="margin:30px auto 50px;">
+        Which model is <span class="strike">best</span> best at <span class="pop">your</span> code?
+      </p>
+      <p class="lede reveal">Every benchmark answers a question you didn't ask. They rank models on someone else's problems — not your weird build system, your house style, your flaky test, your half-finished refactor.</p>
+      <p class="reveal" style="margin-top:24px;">So we guess. We pick a favorite CLI and hope. We A/B by gut feeling across a dozen terminal tabs, lose track of which one is working and which one is stuck, and quietly trust whichever agent we happened to babysit that day.</p>
+      <p class="reveal" style="margin-top:24px;"><strong>Kaiju turns the guess into an experiment.</strong> One prompt, several CLIs, the same isolated starting point — and a verdict your own test suite signs off on. It's a control plane for a fleet of terminal agents, but the point is the bake-off: <span class="mono" style="color:var(--glow)">compare → judge → promote.</span></p>
+    </div>
+  </section>
+
+  <!-- ===================== THE LOOP ===================== -->
+  <section id="loop">
+    <div class="wrap">
+      <div class="eyebrow-row reveal"><span class="kicker">The bake-off loop</span><span class="rule"></span></div>
+      <h2 class="reveal">Compare. Judge.<br/>Promote. Repeat.</h2>
+
+      <div class="loop-stage" style="margin-top:46px;">
+        <div class="loop-svg-card reveal">
+          <svg viewBox="0 0 400 400" width="100%" aria-label="The bake-off loop: compare, judge, promote, leaderboard">
+            <!-- base ring -->
+            <path class="flow-path" d="M 200 56 A 144 144 0 0 1 344 200 A 144 144 0 0 1 200 344 A 144 144 0 0 1 56 200 A 144 144 0 0 1 200 56"/>
+            <path class="flow-active" d="M 200 56 A 144 144 0 0 1 344 200 A 144 144 0 0 1 200 344 A 144 144 0 0 1 56 200 A 144 144 0 0 1 200 56"/>
+            <circle class="pulse-travel" r="6"/>
+
+            <!-- nodes -->
+            <g>
+              <circle class="node-ring" cx="200" cy="56" r="34" stroke="var(--glow)"/>
+              <text class="node-lbl" x="200" y="54" text-anchor="middle">COMPARE</text>
+              <text class="node-sub" x="200" y="68" text-anchor="middle">N CLIs</text>
+            </g>
+            <g>
+              <circle class="node-ring" cx="344" cy="200" r="34" stroke="var(--violet)"/>
+              <text class="node-lbl" x="344" y="198" text-anchor="middle">JUDGE</text>
+              <text class="node-sub" x="344" y="212" text-anchor="middle">tests</text>
+            </g>
+            <g>
+              <circle class="node-ring" cx="200" cy="344" r="34" stroke="var(--ember)"/>
+              <text class="node-lbl" x="200" y="342" text-anchor="middle">PROMOTE</text>
+              <text class="node-sub" x="200" y="356" text-anchor="middle">merge</text>
+            </g>
+            <g>
+              <circle class="node-ring" cx="56" cy="200" r="34" stroke="#dfe6e1"/>
+              <text class="node-lbl" x="56" y="198" text-anchor="middle">BOARD</text>
+              <text class="node-sub" x="56" y="212" text-anchor="middle">record</text>
+            </g>
+            <!-- center -->
+            <text x="200" y="196" text-anchor="middle" style="font-family:'Anton';font-size:30px;fill:var(--glow);opacity:.9">↻</text>
+            <text class="node-sub" x="200" y="216" text-anchor="middle" style="fill:var(--muted)">per repo</text>
+          </svg>
+        </div>
+
+        <ul class="loop-steps reveal">
+          <li>
+            <span class="num">1</span>
+            <div><h3>Compare across CLIs</h3>
+            <p>One prompt fans out to N isolated runs — one per CLI, each on its own <code>kaiju/&lt;id&gt;</code> worktree branch. No shared state; they can't clobber each other. Watch the live diffs side by side.</p></div>
+          </li>
+          <li>
+            <span class="num">2</span>
+            <div><h3>Judge, objectively</h3>
+            <p>A local <code>claude -p</code> ranks the runs <em>anonymized</em> (A/B/C — it can't favor a brand). Hand it a test command and it runs <em>your</em> suite in each worktree, weighing pass/fail over looks. No API key.</p></div>
+          </li>
+          <li>
+            <span class="num">3</span>
+            <div><h3>Promote the winner</h3>
+            <p>One click commits a run's changes and merges its branch into your workspace. Refuses a dirty tree, aborts cleanly on conflict — and tells you the branch to merge by hand.</p></div>
+          </li>
+          <li>
+            <span class="num">4</span>
+            <div><h3>Keep score</h3>
+            <p>Every judged bake-off is recorded per repo. Open the <strong>Leaderboard</strong> to see which model wins most — and whose tests pass most — for <em>this</em> codebase.</p></div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== DASHBOARD MOCK ===================== -->
+  <section style="background:linear-gradient(180deg,var(--ink),var(--ink-2));border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
+    <div class="wrap">
+      <div class="eyebrow-row reveal" style="max-width:var(--read);margin:0 auto 10px;"><span class="kicker">See it</span><span class="rule"></span></div>
+      <p class="read reveal" style="text-align:center;margin-bottom:40px;color:#aeb8b3;">A self-contained web dashboard, served by the daemon. Color-coded status, waiting agents sorted to the top, a live per-agent terminal — and you can reach it from your phone.</p>
+
+      <div class="device reveal">
+        <div class="bar">
+          <span class="dot3 r"></span><span class="dot3 y"></span><span class="dot3 g"></span>
+          <span class="url">127.0.0.1:7800 — kaiju fleet</span>
+        </div>
+        <div class="dash">
+          <div class="agent-row winner">
+            <span class="st run"><span class="d"></span>running</span>
+            <span class="nm">fix-auth-redirect <span class="meta">· a1b2c3d4</span></span>
+            <span class="badge cl">claude</span>
+            <span class="meta">14,203 tok · $0.21</span>
+            <span class="winner-tag">★ winner</span>
+          </div>
+          <div class="agent-row">
+            <span class="st run"><span class="d"></span>running</span>
+            <span class="nm">fix-auth-redirect <span class="meta">· e5f6a7b8</span></span>
+            <span class="badge cx">codex</span>
+            <span class="meta">11,980 tok · $0.18</span>
+            <span class="badge">tests 8/9</span>
+          </div>
+          <div class="agent-row">
+            <span class="st wait"><span class="d"></span>needs you</span>
+            <span class="nm">fix-auth-redirect <span class="meta">· c9d0e1f2</span></span>
+            <span class="badge gm">gemini</span>
+            <span class="meta">9,440 tok · —</span>
+            <span class="badge">prompt</span>
+          </div>
+          <div class="agent-row">
+            <span class="st done"><span class="d"></span>completed</span>
+            <span class="nm">migrate-config <span class="meta">· 7a8b9c0d</span></span>
+            <span class="badge cl">claude</span>
+            <span class="meta">22,114 tok · $0.33</span>
+            <span class="badge">diff +84 −12</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== FEATURE GRID ===================== -->
+  <section>
+    <div class="wrap">
+      <div class="eyebrow-row reveal"><span class="kicker">Also a capable fleet manager</span><span class="rule"></span></div>
+      <h2 class="reveal">Many agents,<br/>one calm place.</h2>
+
+      <div class="grid" style="margin-top:42px;">
+        <div class="card reveal"><span class="ico">🛰️</span><span class="tagm">Visibility</span>
+          <h3>Live fleet, real metrics</h3><p>Spawn Claude, Codex, Gemini — or any custom CLI — and track each with live status, runtime, token and cost metrics, pulled from the CLI's own transcript so they're exact.</p></div>
+
+        <div class="card reveal"><span class="ico">⌨️</span><span class="tagm">Control</span>
+          <h3>A terminal in the browser</h3><p>Each agent gets a real xterm.js terminal over a WebSocket — typed input, Ctrl-C, arrow keys. Answer prompts and approvals without leaving the dashboard.</p></div>
+
+        <div class="card reveal"><span class="ico">📱</span><span class="tagm">Reach</span>
+          <h3>Drive it from your phone</h3><p>Bind the LAN, pair a device with a QR code, and each device gets its own revocable token. The host stays trusted; remote peers must authenticate.</p></div>
+
+        <div class="card reveal"><span class="ico">🧬</span><span class="tagm">Continuity</span>
+          <h3>Adopt a live session</h3><p>Bring an existing Claude Code conversation under Kaiju by id — it resumes inside a managed tmux session and shows up in the dashboard (and on paired devices).</p></div>
+
+        <div class="card reveal"><span class="ico">📥</span><span class="tagm">Scale</span>
+          <h3>A task queue + bounded pool</h3><p>Submit a backlog; a worker pool keeps up to <code>KAIJU_CONCURRENCY</code> agents running and drains the queue, each task isolated in its own worktree by default.</p></div>
+
+        <div class="card reveal"><span class="ico">🔔</span><span class="tagm">Awareness</span>
+          <h3>It tells you when it's stuck</h3><p>A background monitor flags <em>waiting-for-input</em>, <em>stuck</em> and <em>error</em> — once, via console bell, native desktop notification, or Slack. No babysitting.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ARCHITECTURE ===================== -->
+  <section style="background:linear-gradient(180deg,var(--ink-2),var(--ink));border-top:1px solid var(--line);">
+    <div class="wrap">
+      <div class="eyebrow-row reveal"><span class="kicker">Under the hood</span><span class="rule"></span></div>
+      <h2 class="reveal">A layered Rust workspace.</h2>
+      <p class="reveal" style="max-width:60ch;color:#aeb8b3;">One daemon binary. No external services. Works offline. The dependency rule is strict — the domain knows nothing about tmux, Axum, or git; adapters implement a single trait, so adding a CLI is one file.</p>
+
+      <div class="arch-card reveal" style="margin-top:40px;">
+        <svg viewBox="0 0 920 360" width="100%" aria-label="Architecture: clients talk to the daemon, which drives tmux sessions, each isolated in a git worktree">
+          <!-- CLIENTS -->
+          <g>
+            <rect class="a-box" x="20" y="120" width="150" height="120" rx="12"/>
+            <text class="a-t" x="95" y="158" text-anchor="middle">Clients</text>
+            <text class="a-s" x="95" y="180" text-anchor="middle">CLI · dashboard</text>
+            <text class="a-s" x="95" y="196" text-anchor="middle">phone · HTTP</text>
+          </g>
+
+          <!-- DAEMON -->
+          <rect class="a-box hi" x="270" y="50" width="330" height="260" rx="16"/>
+          <text class="a-t" x="435" y="78" text-anchor="middle" style="fill:var(--glow)">kaiju-daemon · Axum</text>
+          <g>
+            <rect class="a-box" x="292" y="98" width="130" height="58" rx="9"/>
+            <text class="a-t" x="357" y="124" text-anchor="middle" style="font-size:12px">HTTP API</text>
+            <text class="a-s" x="357" y="140" text-anchor="middle">/agents /compare</text>
+          </g>
+          <g>
+            <rect class="a-box" x="448" y="98" width="130" height="58" rx="9"/>
+            <text class="a-t" x="513" y="124" text-anchor="middle" style="font-size:12px">Monitor</text>
+            <text class="a-s" x="513" y="140" text-anchor="middle">poll · 2s</text>
+          </g>
+          <g>
+            <rect class="a-box" x="292" y="172" width="130" height="58" rx="9"/>
+            <text class="a-t" x="357" y="198" text-anchor="middle" style="font-size:12px">Store</text>
+            <text class="a-s" x="357" y="214" text-anchor="middle">persisted JSON</text>
+          </g>
+          <g>
+            <rect class="a-box" x="448" y="172" width="130" height="58" rx="9"/>
+            <text class="a-t" x="513" y="198" text-anchor="middle" style="font-size:12px">Scheduler</text>
+            <text class="a-s" x="513" y="214" text-anchor="middle">task pool</text>
+          </g>
+          <g>
+            <rect class="a-box" x="292" y="246" width="286" height="46" rx="9"/>
+            <text class="a-s" x="435" y="274" text-anchor="middle">kaiju-adapters — claude · codex · gemini · custom</text>
+          </g>
+
+          <!-- TMUX + WORKTREES -->
+          <g>
+            <rect class="a-box" x="700" y="40" width="200" height="68" rx="11"/>
+            <text class="a-t" x="800" y="68" text-anchor="middle" style="font-size:12px">tmux session</text>
+            <text class="a-s" x="800" y="86" text-anchor="middle">kaiju-claude-a1b2</text>
+          </g>
+          <g>
+            <rect class="a-box" x="700" y="146" width="200" height="68" rx="11"/>
+            <text class="a-t" x="800" y="174" text-anchor="middle" style="font-size:12px">tmux session</text>
+            <text class="a-s" x="800" y="192" text-anchor="middle">kaiju-codex-c3d4</text>
+          </g>
+          <g>
+            <rect class="a-box" x="700" y="252" width="200" height="68" rx="11"/>
+            <text class="a-t" x="800" y="280" text-anchor="middle" style="font-size:12px">git worktree</text>
+            <text class="a-s" x="800" y="298" text-anchor="middle">branch kaiju/&lt;id&gt;</text>
+          </g>
+
+          <!-- wires -->
+          <path class="a-wire live" d="M 170 180 H 270"/>
+          <path class="a-wire live" d="M 600 90 H 700 V 74"/>
+          <path class="a-wire live" d="M 600 150 H 700 V 180"/>
+          <path class="a-wire ember" d="M 600 230 H 660 V 286 H 700"/>
+        </svg>
+      </div>
+
+      <div class="crate-list reveal">
+        <div class="crate"><span class="nm">kaiju-core</span><p>Domain types — <code>Agent</code>, <code>AgentStatus</code>, <code>AgentMetrics</code> — and the <code>Adapter</code> trait. No IO.</p></div>
+        <div class="crate"><span class="nm">kaiju-adapters</span><p>Per-CLI adapters that build commands and parse output. One trait, one file per CLI.</p></div>
+        <div class="crate"><span class="nm">kaiju-daemon</span><p>HTTP API, dashboard, store, tmux integration, task scheduler, and the background monitor.</p></div>
+        <div class="crate"><span class="nm">kaiju-cli</span><p>The <code>kaiju</code> command-line client — spawn, list, logs, diff, send, attach, submit.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== HOW A RUN WORKS ===================== -->
+  <section>
+    <div class="wrap" style="max-width:880px;">
+      <div class="eyebrow-row reveal"><span class="kicker">How a run works</span><span class="rule"></span></div>
+      <h2 class="reveal">From prompt to verdict.</h2>
+      <div class="steps" style="margin-top:34px;">
+        <div class="step reveal"><span class="n"></span><div><h3>A client asks the daemon to create an agent</h3><p>From the CLI, the dashboard, or any HTTP caller — same API. Isolated runs get a fresh git worktree on a <code>kaiju/&lt;id&gt;</code> branch.</p></div></div>
+        <div class="step reveal"><span class="n"></span><div><h3>The agent launches as a tmux session's main process</h3><p>The matching adapter builds the command. Because the agent <em>is</em> the session's process, the session ending is a clean "completed" signal — no exit-code guessing.</p></div></div>
+        <div class="step reveal"><span class="n"></span><div><h3>The monitor polls every two seconds</h3><p>It captures the pane, parses it through the adapter, and updates status + metrics. Content-hash fingerprinting catches <em>stuck</em>; a confirmation gate keeps <em>waiting-for-input</em> honest. It alerts you once.</p></div></div>
+        <div class="step reveal"><span class="n"></span><div><h3>You read, reply, judge, promote</h3><p>Check status / logs / diff, type into the live terminal, or attach to tmux directly. Then let the judge rank the runs and promote the winner into your branch.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ENGINEERING NOTES ===================== -->
+  <section style="background:linear-gradient(180deg,var(--ink),var(--ink-2));border-top:1px solid var(--line);">
+    <div class="wrap">
+      <div class="eyebrow-row reveal"><span class="kicker">Engineering notes</span><span class="rule"></span></div>
+      <h2 class="reveal">The logic is pure.<br/>The world is a parameter.</h2>
+      <p class="reveal" style="max-width:62ch;color:#aeb8b3;">Two recent reliability fixes share the same shape: push every <em>decision</em> into a pure function you can unit-test, and leave only the unavoidable IO in a thin shell. That's how an orchestrator earns trust.</p>
+
+      <div class="note-grid reveal" style="margin-top:38px;">
+        <div class="note">
+          <span class="tagm">// false alerts</span>
+          <h3>A status detector you don't believe is worse than none</h3>
+          <p>Agents stream output in bursts; a prompt-looking line scrolls past mid-thought. The old code trusted it instantly and cried <em>"needs input."</em> Now a fresh waiting signal is held until the pane has actually gone quiet — reusing the idle clock the stuck-detector already computes.</p>
+          <pre><code><span class="c-kw">match</span> base {
+  <span class="c-com">// hold a fresh prompt until output is quiet</span>
+  WaitingForInput
+    <span class="c-kw">if</span> current != WaitingForInput
+    && idle_secs &lt; wait_confirm =&gt; Running,
+  Running <span class="c-kw">if</span> idle_secs &gt;= threshold =&gt; Stuck,
+  Stuck   <span class="c-kw">if</span> idle_secs &lt;  threshold =&gt; Running,
+  other =&gt; other,
+}</code></pre>
+        </div>
+
+        <div class="note">
+          <span class="tagm">// port collisions</span>
+          <h3>Two agents, one port 3000</h3>
+          <p>Isolated agents love to run <code>npm run dev</code> — and collide. Each isolated agent now reserves a free port (TCP-bind probed, base <code>41000</code>) injected as <code>PORT</code>. The selection is pure, with the probe injected, so it's tested without opening a socket.</p>
+          <pre><code><span class="c-kw">fn</span> <span class="c-fn">allocate</span>(base, taken, is_free) -&gt; Option&lt;u16&gt; {
+  (<span class="c-str">0</span>..MAX_ATTEMPTS)
+    .filter_map(|o| base.checked_add(o))
+    .find(|p|
+      !taken.contains(p) && <span class="c-fn">is_free</span>(*p))
+}</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== STATS / TECH ===================== -->
+  <section>
+    <div class="wrap">
+      <div class="eyebrow-row reveal"><span class="kicker">Built with</span><span class="rule"></span></div>
+      <div class="stats reveal" style="margin-top:30px;">
+        <div class="stat"><div class="big">4</div><div class="lab">Rust crates</div></div>
+        <div class="stat"><div class="big">3</div><div class="lab">CLIs + custom</div></div>
+        <div class="stat"><div class="big">0</div><div class="lab">cloud services</div></div>
+        <div class="stat"><div class="big">2s</div><div class="lab">monitor poll</div></div>
+      </div>
+      <div class="chips reveal">
+        <span class="chip">Rust</span><span class="chip">Axum</span><span class="chip">Tokio</span>
+        <span class="chip">tmux</span><span class="chip">git worktrees</span><span class="chip">xterm.js</span>
+        <span class="chip">WebSocket</span><span class="chip">QR pairing</span><span class="chip">MIT licensed</span>
+        <span class="chip">offline-first</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== FINAL CTA ===================== -->
+  <section class="final">
+    <div class="read">
+      <div class="kicker reveal" style="text-align:center;">怪獣 · the monster in your terminal, tamed</div>
+      <h2 class="reveal" style="margin-top:20px;">Stop guessing.<br/>Run the bake-off.</h2>
+      <p class="reveal" style="color:#aeb8b3;">Spin up the daemon, point it at a repo, fan one prompt out across every CLI you have — and let your own tests crown the winner.</p>
+      <div class="cta-row reveal" style="justify-content:center;margin-top:34px;">
+        <a class="btn primary" href="https://github.com/" target="_blank" rel="noopener">★ Star on GitHub</a>
+        <a class="btn ghost" href="#loop">Read the loop again ↺</a>
+      </div>
+      <pre class="reveal" style="text-align:left;max-width:620px;margin:38px auto 0;"><code><span class="c-com"># one prompt, every CLI, your tests as judge</span>
+cargo run -p kaiju-daemon
+kaiju start -t claude -w . --isolate \
+  --prompt <span class="c-str">"fix the failing test"</span></code></pre>
+    </div>
+  </section>
+
+  <footer>
+    <div class="mono">KAIJU — an agent bake-off for your repo · Rust · MIT</div>
+    <div class="mono" style="margin-top:8px;opacity:.6;">compare → judge → promote · built local-first</div>
+  </footer>
+
+</main>
+
+<script>
+  // Staggered scroll reveal
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e, i) => {
+      if (e.isIntersecting) {
+        const peers = [...e.target.parentElement.querySelectorAll('.reveal')];
+        const idx = peers.indexOf(e.target);
+        e.target.style.transitionDelay = Math.min(idx, 5) * 70 + 'ms';
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // Subtle parallax on the atomic rings
+  const atomic = document.querySelector('.atomic');
+  if (atomic && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    addEventListener('scroll', () => {
+      atomic.style.transform = `translateY(calc(-50% + ${scrollY * 0.08}px))`;
+    }, { passive: true });
+  }
+</script>
+</body>
+</html>
