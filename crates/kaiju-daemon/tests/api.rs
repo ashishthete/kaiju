@@ -632,17 +632,9 @@ async fn compare_rejects_blank_prompt() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
-#[tokio::test]
-async fn compare_rejects_non_git_workspace() {
-    let dir = std::env::temp_dir().join("kaiju-compare-nongit");
-    std::fs::create_dir_all(&dir).unwrap();
-    let app = build_app(AppState::new());
-    let resp = app.oneshot(json_request(
-        "POST", "/compare",
-        serde_json::json!({ "workspace": dir.to_string_lossy(), "prompt": "do X", "agent_types": ["claude"] }),
-    )).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
+// A non-git workspace is no longer rejected: compare auto-initializes a repo
+// via `WorktreeManager::ensure_repo` (unit-tested in worktree.rs). Asserting the
+// success path here would spawn real agents, so it isn't exercised at this layer.
 
 #[tokio::test]
 async fn agent_response_includes_compare_group_field() {

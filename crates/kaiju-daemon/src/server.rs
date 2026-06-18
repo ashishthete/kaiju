@@ -330,12 +330,9 @@ fn prepare_run_dir(state: &AppState, agent: &kaiju_core::agent::Agent) -> Result
         return Ok(agent.workspace.clone());
     }
 
-    if !WorktreeManager::is_git_repo(&agent.workspace) {
-        return Err(NexusError::Git(format!(
-            "cannot isolate: {} is not a git repository",
-            agent.workspace.display()
-        )));
-    }
+    // Isolation needs a git repo to branch a worktree from; initialize one if
+    // the workspace isn't already a repo (rather than refusing).
+    WorktreeManager::ensure_repo(&agent.workspace)?;
 
     let path = worktree::worktree_path(&worktrees_base(), &agent.id);
     let branch = worktree::branch_name(&agent.id);
@@ -455,12 +452,9 @@ pub fn spawn_compare_group(
     model: Option<String>,
     auto_approve: bool,
 ) -> Result<(String, Vec<String>)> {
-    if !WorktreeManager::is_git_repo(workspace) {
-        return Err(NexusError::Git(format!(
-            "compare requires a git workspace: {}",
-            workspace.display()
-        )));
-    }
+    // Each run is isolated in its own worktree, which needs a git repo to branch
+    // from; initialize one if the workspace isn't already a repo.
+    WorktreeManager::ensure_repo(workspace)?;
     let group_id = uuid::Uuid::new_v4().to_string();
     let defaults = state.settings.read().expect("settings lock").clone();
     let mut ids = Vec::new();

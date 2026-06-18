@@ -55,6 +55,52 @@ impl WorktreeManager {
             .unwrap_or(false)
     }
 
+    /// Ensure `path` is a git repository, initializing one when it isn't, so an
+    /// agent can be isolated there. A no-op if `path` is already inside a working
+    /// tree (including a subdirectory of an existing repo). A fresh repo gets an
+    /// initial empty commit so worktrees have a base `HEAD` to branch from; a
+    /// local identity is set on that one commit so it succeeds even without a
+    /// global git config.
+    pub fn ensure_repo(path: &Path) -> Result<()> {
+        if Self::is_git_repo(path) {
+            return Ok(());
+        }
+        std::fs::create_dir_all(path)?;
+        let p = path.display().to_string();
+        Self::git_ok(&["-C", &p, "init"], path, "initialize git repository")?;
+        Self::git_ok(
+            &[
+                "-C",
+                &p,
+                "-c",
+                "user.email=kaiju@localhost",
+                "-c",
+                "user.name=Kaiju",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "kaiju: initialize repository",
+            ],
+            path,
+            "create the initial commit",
+        )
+    }
+
+    /// Run a git command, mapping a non-zero exit to a `Git` error describing
+    /// `what` failed at `path`.
+    fn git_ok(args: &[&str], path: &Path, what: &str) -> Result<()> {
+        let output = Command::new("git").args(args).output()?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(NexusError::Git(format!(
+                "failed to {what} at '{}': {}",
+                path.display(),
+                stderr.trim()
+            )));
+        }
+        Ok(())
+    }
+
     /// Create a worktree at `worktree` on a new `branch` checked out from the
     /// current HEAD of `repo`.
     pub fn create(repo: &Path, worktree: &Path, branch: &str) -> Result<()> {
@@ -249,5 +295,31 @@ mod tests {
             worktree_path(base, "1a2b3c4d5e6f"),
             PathBuf::from("/home/u/.kaiju/worktrees/1a2b3c4d")
         );
+    }
+
+    #[test]
+    fn ensure_repo_initializes_a_plain_dir_with_a_base_commit() {
+        let dir = std::env::temp_dir().join(format!("kaiju-ensure-repo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        assert!(!WorktreeManager::is_git_repo(&dir));
+        WorktreeManager::ensure_repo(&dir).unwrap();
+        assert!(WorktreeManager::is_git_repo(&dir));
+
+        // A base HEAD must exist so worktrees can branch from it.
+        let head = Command::new("git")
+            .args(["-C", &dir.display().to_string(), "rev-parse", "HEAD"])
+            .output()
+            .unwrap();
+        assert!(
+            head.status.success(),
+            "fresh repo should have an initial commit"
+        );
+
+        // Idempotent: a second call on an existing repo is a no-op success.
+        WorktreeManager::ensure_repo(&dir).unwrap();
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
