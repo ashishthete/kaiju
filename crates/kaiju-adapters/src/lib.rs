@@ -7,5 +7,6 @@ pub mod custom;
 pub mod gemini;
 mod pricing;
 mod registry;
+mod trust;
 
 pub use registry::AdapterRegistry;

@@ -13,7 +13,9 @@ impl Adapter for CodexAdapter {
     }
 
     fn default_model(&self) -> Option<&str> {
-        Some("o3")
+        // Let Codex use its own configured default model (e.g. gpt-5.5). Pinning a
+        // specific id like "o3" breaks on accounts/versions that don't have it.
+        None
     }
 
     fn build_command(&self, config: &AgentConfig) -> String {
@@ -25,13 +27,16 @@ impl Adapter for CodexAdapter {
             cmd.push_str(&format!(" --model {model}"));
         }
 
+        // Codex requires options BEFORE the positional prompt
+        // (`codex [OPTIONS] [PROMPT]`), so flags like `--full-auto` are emitted
+        // ahead of the prompt — otherwise Codex exits with "unexpected argument".
+        for arg in &config.extra_args {
+            cmd.push_str(&format!(" {arg}"));
+        }
+
         if let Some(prompt) = &config.prompt {
             let escaped = prompt.replace('\'', "'\\''");
             cmd.push_str(&format!(" '{escaped}'"));
-        }
-
-        for arg in &config.extra_args {
-            cmd.push_str(&format!(" {arg}"));
         }
 
         cmd
@@ -68,11 +73,18 @@ impl Adapter for CodexAdapter {
     }
 
     fn auto_approve_args(&self) -> Vec<String> {
-        vec!["--full-auto".to_string()]
+        // Codex's fully-unattended mode: skip every approval prompt and the
+        // sandbox (the agent is already isolated in its own worktree). The old
+        // `--full-auto` alias was removed from the top-level CLI in newer Codex.
+        vec!["--dangerously-bypass-approvals-and-sandbox".to_string()]
     }
 
     fn display_name(&self) -> &str {
         "Codex CLI"
+    }
+
+    fn ensure_trusted(&self, run_dir: &std::path::Path) {
+        crate::trust::ensure_codex_trust(run_dir);
     }
 }
 
@@ -102,7 +114,8 @@ mod tests {
     }
 
     #[test]
-    fn build_command_uses_default_model_when_none() {
+    fn build_command_omits_model_when_none() {
+        // No forced default — Codex picks its own model when none is given.
         let adapter = CodexAdapter;
         let cfg = AgentConfig {
             agent_type: AgentType::Codex,
@@ -111,7 +124,24 @@ mod tests {
             prompt: None,
             extra_args: vec![],
         };
-        assert_eq!(adapter.build_command(&cfg), "cd /tmp && codex --model o3");
+        assert_eq!(adapter.build_command(&cfg), "cd /tmp && codex");
+    }
+
+    #[test]
+    fn build_command_puts_flags_before_prompt() {
+        // Codex needs options ahead of the positional prompt, or it errors.
+        let adapter = CodexAdapter;
+        let cfg = AgentConfig {
+            agent_type: AgentType::Codex,
+            model: None,
+            workspace: PathBuf::from("/tmp"),
+            prompt: Some("do the thing".to_string()),
+            extra_args: vec!["--full-auto".to_string()],
+        };
+        assert_eq!(
+            adapter.build_command(&cfg),
+            "cd /tmp && codex --full-auto 'do the thing'"
+        );
     }
 
     #[test]
@@ -136,7 +166,10 @@ mod tests {
     }
 
     #[test]
-    fn auto_approve_uses_full_auto() {
-        assert_eq!(CodexAdapter.auto_approve_args(), vec!["--full-auto".to_string()]);
+    fn auto_approve_uses_bypass_flag() {
+        assert_eq!(
+            CodexAdapter.auto_approve_args(),
+            vec!["--dangerously-bypass-approvals-and-sandbox".to_string()]
+        );
     }
 }

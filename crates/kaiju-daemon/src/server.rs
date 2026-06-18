@@ -61,9 +61,9 @@ impl AppState {
             settings: std::sync::Arc::new(std::sync::RwLock::new(
                 crate::settings::Settings::default(),
             )),
-            devices: std::sync::Arc::new(std::sync::RwLock::new(
-                crate::devices::Devices::default(),
-            )),
+            devices: std::sync::Arc::new(
+                std::sync::RwLock::new(crate::devices::Devices::default()),
+            ),
             pending_codes: std::sync::Arc::new(std::sync::Mutex::new(
                 crate::pairing::PendingCodes::default(),
             )),
@@ -239,6 +239,10 @@ pub fn start_agent_internal(state: &AppState, id: &str) -> Result<()> {
     // Determine where the agent actually runs: its own git worktree if
     // isolation was requested, otherwise the workspace directly.
     let run_dir = prepare_run_dir(state, &agent)?;
+
+    // Pre-trust the run directory in the CLI's own trust store so its first-run
+    // folder-trust prompt doesn't stall an unattended / bake-off launch.
+    adapter.ensure_trusted(&run_dir);
 
     let config = kaiju_core::agent::AgentConfig {
         agent_type: agent.agent_type.clone(),
@@ -421,7 +425,11 @@ pub fn spawn_compare_group(
     for type_str in agent_types {
         let agent_type: kaiju_core::agent::AgentType = type_str.parse().expect("infallible");
         let extra_args = if auto_approve {
-            state.adapters.get(&agent_type).map(|a| a.auto_approve_args()).unwrap_or_default()
+            state
+                .adapters
+                .get(&agent_type)
+                .map(|a| a.auto_approve_args())
+                .unwrap_or_default()
         } else {
             vec![]
         };

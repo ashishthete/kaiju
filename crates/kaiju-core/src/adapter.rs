@@ -206,11 +206,7 @@ pub trait Adapter: Send + Sync {
 
     /// Command to resume a *specific* session by id (e.g. `claude --resume <id>`),
     /// for adopting an existing conversation. Default: unsupported.
-    fn resume_session_command(
-        &self,
-        _config: &AgentConfig,
-        _session_id: &str,
-    ) -> Option<String> {
+    fn resume_session_command(&self, _config: &AgentConfig, _session_id: &str) -> Option<String> {
         None
     }
 
@@ -238,6 +234,12 @@ pub trait Adapter: Send + Sync {
     fn auto_approve_args(&self) -> Vec<String> {
         Vec::new()
     }
+
+    /// Pre-authorize `run_dir` in this CLI's own trust store so its first-run
+    /// "do you trust this folder?" prompt doesn't stall an unattended launch
+    /// (isolated runs use a brand-new worktree the CLI has never seen).
+    /// Best-effort and side-effecting; the default does nothing.
+    fn ensure_trusted(&self, _run_dir: &std::path::Path) {}
 }
 
 #[cfg(test)]
@@ -419,17 +421,28 @@ mod tests {
     fn adapter_defaults_for_sessions_are_empty() {
         struct Bare;
         impl Adapter for Bare {
-            fn agent_type(&self) -> AgentType { AgentType::Claude }
-            fn build_command(&self, _c: &AgentConfig) -> String { String::new() }
-            fn parse_output(&self, _o: &str) -> ParsedOutput { ParsedOutput::default() }
-            fn display_name(&self) -> &str { "bare" }
+            fn agent_type(&self) -> AgentType {
+                AgentType::Claude
+            }
+            fn build_command(&self, _c: &AgentConfig) -> String {
+                String::new()
+            }
+            fn parse_output(&self, _o: &str) -> ParsedOutput {
+                ParsedOutput::default()
+            }
+            fn display_name(&self) -> &str {
+                "bare"
+            }
         }
         let a = Bare;
         let ws = std::path::Path::new("/tmp/x");
         assert!(a.list_sessions(ws).is_empty());
         let cfg = AgentConfig {
-            agent_type: AgentType::Claude, model: None,
-            workspace: ws.to_path_buf(), prompt: None, extra_args: vec![],
+            agent_type: AgentType::Claude,
+            model: None,
+            workspace: ws.to_path_buf(),
+            prompt: None,
+            extra_args: vec![],
         };
         assert!(a.resume_session_command(&cfg, "abc").is_none());
     }
@@ -438,10 +451,18 @@ mod tests {
     fn default_auto_approve_args_empty() {
         struct Bare;
         impl Adapter for Bare {
-            fn agent_type(&self) -> AgentType { AgentType::Claude }
-            fn build_command(&self, _c: &AgentConfig) -> String { String::new() }
-            fn parse_output(&self, _o: &str) -> ParsedOutput { ParsedOutput::default() }
-            fn display_name(&self) -> &str { "bare" }
+            fn agent_type(&self) -> AgentType {
+                AgentType::Claude
+            }
+            fn build_command(&self, _c: &AgentConfig) -> String {
+                String::new()
+            }
+            fn parse_output(&self, _o: &str) -> ParsedOutput {
+                ParsedOutput::default()
+            }
+            fn display_name(&self) -> &str {
+                "bare"
+            }
         }
         assert!(Bare.auto_approve_args().is_empty());
     }
