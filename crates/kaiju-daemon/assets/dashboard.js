@@ -778,9 +778,16 @@ async function renderComparison(agents) {
     });
   }
   group.forEach(function (a) {
+    const pane = document.getElementById("cmp-diff-" + a.id);
     api("/agents/" + a.id + "/diff").then(function (r) { return r.json(); }).then(function (d) {
-      const pane = document.getElementById("cmp-diff-" + a.id);
-      if (pane) pane.innerHTML = d.diff ? renderDiff(d.diff) : "(no changes)";
+      if (!pane) return;
+      if (d.diff && d.diff.trim()) { pane.innerHTML = renderDiff(d.diff); return; }
+      // No file changes (e.g. a conversational task) — show the agent's output
+      // so its answer is comparable, not just an empty diff.
+      api("/agents/" + a.id + "/logs").then(function (r) { return r.json(); }).then(function (l) {
+        const out = (l.logs || "").trim();
+        pane.textContent = out ? out : "(no changes)";
+      }).catch(function () { pane.textContent = "(no changes)"; });
     }).catch(function () {});
   });
 }

@@ -696,15 +696,25 @@ async fn compare_judge(
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
 
-    // Diffs are cheap + synchronous; collect them in order.
+    // Each run's "work product" for the judge: its git diff, or — when the task
+    // changed no files (e.g. a conversational prompt) — the agent's terminal
+    // output, so chat-style answers can still be compared and ranked.
     let diffs: Vec<String> = agents
         .iter()
         .map(|a| {
             let d = crate::worktree::WorktreeManager::diff(a.run_dir()).unwrap_or_default();
-            if d.trim().is_empty() {
+            if !d.trim().is_empty() {
+                return d;
+            }
+            let output = crate::tmux::TmuxManager::capture_pane(&a.session_name, 200)
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+                .or_else(|| crate::logstore::load(&a.id))
+                .unwrap_or_default();
+            if output.trim().is_empty() {
                 "(no changes)".to_string()
             } else {
-                d
+                format!("(made no file changes; the candidate's output:)\n{output}")
             }
         })
         .collect();

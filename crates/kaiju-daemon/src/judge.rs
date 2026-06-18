@@ -85,12 +85,14 @@ pub fn parse_winner(verdict: &str) -> Option<String> {
 /// name), includes the task, and truncates each diff.
 pub fn build_prompt(task: &str, candidates: &[Candidate]) -> String {
     let mut s = String::from(
-        "You are judging candidate solutions to a coding task. When test results \
-         are given, weigh them heavily — a candidate whose tests pass beats one \
-         that only looks cleaner. Rank them best to worst on test results, \
-         correctness, completeness, and code quality. Give a one-line rationale \
-         for each candidate, then name the winner. End your reply with a line \
-         exactly `WINNER: <letter>`. Be concise.\n\n## Task\n",
+        "You are judging candidate solutions to a task. Each candidate's work is \
+         shown below as either a code diff or, when the task changed no files, the \
+         agent's text output — judge whichever is given on its merits. When test \
+         results are given, weigh them heavily — a candidate whose tests pass beats \
+         one that only looks cleaner. Rank them best to worst on test results, \
+         correctness, completeness, and quality. Give a one-line rationale for each \
+         candidate, then name the winner. End your reply with a line exactly \
+         `WINNER: <letter>`. Be concise.\n\n## Task\n",
     );
     s.push_str(task);
     s.push_str("\n\n## Candidates\n");
