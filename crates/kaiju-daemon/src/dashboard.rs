@@ -238,7 +238,7 @@ pub const PAGE: &str = r#"<!doctype html>
   }
   .agent-card.selected {
     border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent-glow), inset 0 0 24px #34e2a00a;
+    box-shadow: 0 0 0 2px var(--accent), inset 0 0 24px #34e2a012;
   }
   .agent-card.attention {
     border-color: var(--amber);
@@ -252,9 +252,13 @@ pub const PAGE: &str = r#"<!doctype html>
     0%,100% { box-shadow: 0 0 0 1px var(--amber-weak), 0 0 18px #f5a62318; }
     50%      { box-shadow: 0 0 0 1px #f5a62355, 0 0 30px #f5a62328; }
   }
+  /* Selection must stay unmistakable even while the card is in an attention
+     state: keep the accent ring dominant (with a faint amber halo as a hint),
+     and stop the pulse so "selected" reads clearly. */
   .agent-card.attention.selected {
-    border-color: var(--amber);
-    animation: attentionPulse 2.4s ease-in-out infinite;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent), 0 0 20px #f5a62322;
+    animation: none;
   }
 
   /* Left accent bar */
@@ -267,13 +271,15 @@ pub const PAGE: &str = r#"<!doctype html>
     background: var(--border);
     transition: background .15s ease;
   }
-  .agent-card.selected::before    { background: var(--accent); }
   .agent-card.s-waitingforinput::before,
   .agent-card.attention::before   { background: var(--amber); }
   .agent-card.s-stuck::before,
   .agent-card.s-error::before     { background: var(--red); }
   .agent-card.s-running::before   { background: var(--accent); }
   .agent-card.s-starting::before  { background: var(--blue); }
+  /* Selected bar comes last so it wins the tie against the status bars above —
+     the selected card always shows the accent bar, whatever its status. */
+  .agent-card.selected::before    { background: var(--accent); width: 4px; }
 
   .card-body {
     padding: .65rem .75rem .55rem .9rem;
