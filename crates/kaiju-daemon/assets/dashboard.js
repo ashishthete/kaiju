@@ -243,15 +243,23 @@ async function openTerminal() {
 
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const q = token ? ("?token=" + encodeURIComponent(token)) : "";
-  ws = new WebSocket(proto + "://" + location.host +
+  // Bind the handlers to *this* socket, not the global `ws`. When the user
+  // switches cards, the previous socket is closed but a frame already in flight
+  // (or its close event) can still fire; each frame is a full repaint, so a
+  // stray frame from the old agent would repaint the new pane with old content.
+  // That was invisible while the new agent kept repainting, but stuck on screen
+  // when the new agent was idle/stuck. The `sock === ws` guard drops any event
+  // from a socket that is no longer the current one.
+  const sock = new WebSocket(proto + "://" + location.host +
                      "/agents/" + selected + "/terminal/ws" + q);
-  ws.onmessage = (e) => {
-    if (!term) return;
+  ws = sock;
+  sock.onmessage = (e) => {
+    if (sock !== ws || !term) return;
     if (isPinned()) { pendingFrame = e.data; return; }
     term.write(e.data);
   };
-  ws.onclose = () => { if (term) term.write("\r\n[disconnected]\r\n"); };
-  term.onData((d) => { if (ws && ws.readyState === 1) ws.send(d); });
+  sock.onclose = () => { if (sock === ws && term) term.write("\r\n[disconnected]\r\n"); };
+  term.onData((d) => { if (sock.readyState === 1) sock.send(d); });
 }
 
 // Re-fit the pane when the window changes size (debounced).
