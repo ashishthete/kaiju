@@ -36,6 +36,17 @@ pub fn last_non_empty_line(output: &str) -> &str {
         .unwrap_or("")
 }
 
+/// The last `n` lines of `output` (fewer if it is shorter), rejoined with `\n`.
+///
+/// Lets adapters match "current screen" signals — like a usage-limit banner —
+/// without reaching into deep tmux scrollback, where a stale line from earlier
+/// in the session would otherwise produce a false match.
+pub fn tail_lines(output: &str, n: usize) -> String {
+    let lines: Vec<&str> = output.lines().collect();
+    let start = lines.len().saturating_sub(n);
+    lines[start..].join("\n")
+}
+
 /// Heuristic: does this line look like an interactive prompt awaiting input?
 ///
 /// Deliberately conservative to avoid false positives (which would falsely
@@ -260,6 +271,15 @@ mod tests {
     fn last_non_empty_line_empty_input() {
         assert_eq!(last_non_empty_line(""), "");
         assert_eq!(last_non_empty_line("\n  \n"), "");
+    }
+
+    #[test]
+    fn tail_lines_returns_only_the_last_n() {
+        let output = "a\nb\nc\nd\ne";
+        assert_eq!(tail_lines(output, 2), "d\ne");
+        // Fewer lines than requested → the whole thing.
+        assert_eq!(tail_lines("a\nb", 5), "a\nb");
+        assert_eq!(tail_lines("", 3), "");
     }
 
     #[test]

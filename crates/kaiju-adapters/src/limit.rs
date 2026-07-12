@@ -8,6 +8,7 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 /// Matches `resets 5:30pm (Asia/Calcutta)` in a limit banner (case-insensitive).
+/// The pattern is a constant literal, so the compile cannot fail at runtime.
 static LIMIT_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)resets\s+(\d{1,2}(?::\d{2})?\s*[ap]m)\s*\(([^)]+)\)").unwrap()
 });
@@ -46,19 +47,42 @@ pub fn parse_clock(s: &str) -> Option<(u32, u32)> {
     Some((hour24, m))
 }
 
-/// The UTC instant of the next occurrence of wall-clock `time_str` in IANA
-/// `tz_name`. Uses today's date in that zone; if that instant already passed
-/// `now` (clock skew / a stale banner), returns `now` so we fire immediately.
-/// Claude session resets are intra-day, so we never roll forward a whole day.
+/// A Claude session window is ~5 hours, so a real reset is at most a few hours
+/// out. If today's occurrence of the wall-clock time is already past, we only
+/// roll to *tomorrow's* occurrence when it lands inside this look-ahead (the
+/// overnight case, e.g. limited at 23:00, "resets 2am"). A past time whose next
+/// occurrence is a whole day away is instead treated as stale → fire now.
+const MAX_LOOKAHEAD: i64 = 6;
+
+/// The UTC instant the limit resets, from wall-clock `time_str` in IANA
+/// `tz_name`.
+///
+/// - Today's occurrence is still ahead → use it.
+/// - Today's occurrence has passed but tomorrow's is within `MAX_LOOKAHEAD`
+///   hours → use tomorrow's (the overnight reset).
+/// - Otherwise (just skewed past, or a stale banner) → `now`, so we fire
+///   immediately rather than wait ~a day.
 pub fn reset_to_utc(now: DateTime<Utc>, time_str: &str, tz_name: &str) -> Option<DateTime<Utc>> {
     let (hour, minute) = parse_clock(time_str)?;
     let tz: Tz = tz_name.parse().ok()?;
     let local = now.with_timezone(&tz);
-    let target = tz
-        .with_ymd_and_hms(local.year(), local.month(), local.day(), hour, minute, 0)
-        .single()?
-        .with_timezone(&Utc);
-    Some(if target <= now { now } else { target })
+
+    let at_date = |date: chrono::NaiveDate| {
+        tz.with_ymd_and_hms(date.year(), date.month(), date.day(), hour, minute, 0)
+            .single()
+            .map(|t| t.with_timezone(&Utc))
+    };
+
+    let today = at_date(local.date_naive())?;
+    if today > now {
+        return Some(today);
+    }
+    if let Some(tomorrow) = local.date_naive().succ_opt().and_then(at_date) {
+        if tomorrow - now <= chrono::Duration::hours(MAX_LOOKAHEAD) {
+            return Some(tomorrow);
+        }
+    }
+    Some(now)
 }
 
 #[cfg(test)]
@@ -86,10 +110,20 @@ mod tests {
     }
 
     #[test]
-    fn reset_past_time_resolves_to_now() {
-        // 13:00 UTC = 18:30 IST, already past the 17:30 IST reset → fire now.
+    fn reset_recently_passed_time_resolves_to_now() {
+        // 13:00 UTC = 18:30 IST, just past the 17:30 IST reset. Tomorrow's 17:30
+        // is ~23h out (> lookahead), so this is stale, not overnight → fire now.
         let now = Utc.with_ymd_and_hms(2026, 7, 12, 13, 0, 0).unwrap();
         assert_eq!(reset_to_utc(now, "5:30pm", "Asia/Calcutta").unwrap(), now);
+    }
+
+    #[test]
+    fn reset_overnight_rolls_to_next_day() {
+        // 23:00 IST = 17:30 UTC. Banner "resets 2am" means 02:00 IST the NEXT
+        // day = 20:30 UTC (3h ahead) — not this morning's 2am.
+        let now = Utc.with_ymd_and_hms(2026, 7, 12, 17, 30, 0).unwrap();
+        let got = reset_to_utc(now, "2am", "Asia/Calcutta").unwrap();
+        assert_eq!(got, Utc.with_ymd_and_hms(2026, 7, 12, 20, 30, 0).unwrap());
     }
 
     #[test]

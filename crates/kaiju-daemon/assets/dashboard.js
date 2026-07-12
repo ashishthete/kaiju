@@ -484,7 +484,7 @@ async function refreshDetail() {
   const upd = lastUpdated[selected];
   const resumeAt = (lastAgents.find(a => a.id === selected) || {}).resume_at;
   const activityEl = document.getElementById("d-activity");
-  if (resumeAt) {
+  if (resumeAt && lastStatus[selected] === "limited") {
     const t = new Date(resumeAt);
     activityEl.textContent = "limited · resumes " +
       t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });

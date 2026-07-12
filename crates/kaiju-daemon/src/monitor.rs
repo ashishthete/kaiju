@@ -36,6 +36,11 @@ const WAIT_CONFIRM_SECS: i64 = 3;
 /// tight-looping.
 const MIN_RETRY_BACKOFF_SECS: i64 = 60;
 
+/// A limit banner is only acted on once the pane has been quiet this long — so
+/// we don't arm off a banner glimpsed while the agent is still streaming output
+/// (e.g. right after it resumes). Mirrors `WAIT_CONFIRM_SECS`.
+const LIMIT_CONFIRM_SECS: i64 = 3;
+
 /// Per-agent record of the last distinct output seen, used to measure idle time.
 pub(crate) struct OutputActivity {
     fingerprint: u64,
@@ -227,8 +232,9 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
         // reset. Self-correcting — if the agent is still limited afterward, the
         // next poll re-arms from the (possibly new) banner.
         if next == AgentStatus::Limited && agent.auto_continue {
-            // Arm once; don't overwrite an already-armed timer.
-            if agent.resume_at.is_none() {
+            // Arm once the stream has actually stopped (don't act on a banner
+            // seen mid-output), and never overwrite an already-armed timer.
+            if idle_secs >= LIMIT_CONFIRM_SECS && agent.resume_at.is_none() {
                 if let Some((time, tz)) = &parsed.limit_reset {
                     if let Some(at) = kaiju_adapters::limit::reset_to_utc(now, time, tz) {
                         state.store.set_resume_at(&agent.id, Some(at));

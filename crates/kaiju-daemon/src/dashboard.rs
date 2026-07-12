@@ -937,6 +937,7 @@ pub const PAGE: &str = r#"<!doctype html>
     <select id="filter-status" onchange="applyFilter()" title="Filter by status">
       <option value="all">All statuses</option>
       <option value="waitingforinput">Waiting for input</option>
+      <option value="limited">Limited</option>
       <option value="stuck">Stuck</option>
       <option value="error">Error</option>
       <option value="running">Running</option>
