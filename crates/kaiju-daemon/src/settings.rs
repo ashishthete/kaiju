@@ -37,6 +37,9 @@ pub struct Settings {
     /// Run agents in an isolated git worktree by default.
     #[serde(default)]
     pub isolate: bool,
+    /// Auto-continue agents past a usage limit by default.
+    #[serde(default)]
+    pub auto_continue: bool,
     /// Auto-stop an agent once its tokens-used reaches this many.
     #[serde(default)]
     pub max_tokens: Option<u64>,
@@ -203,6 +206,11 @@ mod tests {
         };
         assert!(s.budget_exceeded(&metrics(None, Some(5.0))).is_some());
         assert!(s.budget_exceeded(&metrics(None, Some(4.99))).is_none());
+    }
+
+    #[test]
+    fn auto_continue_defaults_off() {
+        assert!(!Settings::default().auto_continue);
     }
 
     #[test]

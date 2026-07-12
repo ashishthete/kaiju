@@ -88,6 +88,9 @@ pub struct CreateAgentRequest {
     /// extra_args.
     #[serde(default)]
     pub auto_approve: bool,
+    /// If true, auto-continue this agent past a usage limit at reset time.
+    #[serde(default)]
+    pub auto_continue: bool,
 }
 
 #[derive(Deserialize)]
@@ -190,6 +193,8 @@ pub struct AgentResponse {
     pub metrics: MetricsResponse,
     pub compare_group: Option<String>,
     pub port: Option<u16>,
+    /// When auto-continue will fire (RFC3339), if armed. Drives the dashboard badge.
+    pub resume_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -223,6 +228,7 @@ impl From<&kaiju_core::agent::Agent> for AgentResponse {
             },
             compare_group: agent.compare_group.clone(),
             port: agent.port,
+            resume_at: agent.resume_at.map(|t| t.to_rfc3339()),
         }
     }
 }
@@ -374,6 +380,7 @@ async fn create_agent(
     let mut agent = kaiju_core::agent::Agent::new(config);
     agent.isolate = req.isolate || defaults.isolate;
     agent.batch = req.batch;
+    agent.auto_continue = req.auto_continue || defaults.auto_continue;
     let id = agent.id.clone();
     state.store.insert(agent);
 

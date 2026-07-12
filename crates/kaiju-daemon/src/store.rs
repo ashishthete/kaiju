@@ -159,6 +159,43 @@ impl AgentStore {
         updated
     }
 
+    /// Arm (or clear) the auto-continue timer for an agent.
+    pub fn set_resume_at(&self, id: &str, resume_at: Option<DateTime<Utc>>) -> bool {
+        let updated = {
+            let mut agents = self.agents.write().unwrap();
+            match agents.get_mut(id) {
+                Some(agent) => {
+                    agent.resume_at = resume_at;
+                    true
+                }
+                None => false,
+            }
+        };
+        if updated {
+            self.persist();
+        }
+        updated
+    }
+
+    /// Record an auto-continue fire: clear the timer, stamp the fire time.
+    pub fn mark_auto_continue_fired(&self, id: &str, now: DateTime<Utc>) -> bool {
+        let updated = {
+            let mut agents = self.agents.write().unwrap();
+            match agents.get_mut(id) {
+                Some(agent) => {
+                    agent.resume_at = None;
+                    agent.last_fired = Some(now);
+                    true
+                }
+                None => false,
+            }
+        };
+        if updated {
+            self.persist();
+        }
+        updated
+    }
+
     pub fn set_port(&self, id: &str, port: u16) -> bool {
         let updated = {
             let mut agents = self.agents.write().unwrap();
@@ -191,6 +228,7 @@ impl AgentStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use kaiju_core::agent::{AgentConfig, AgentType};
     use std::path::PathBuf;
 
@@ -304,6 +342,23 @@ mod tests {
         let stored = store.get(&id).unwrap();
         assert_eq!(stored.started_at, Some(now));
         assert_eq!(stored.status, AgentStatus::Running);
+    }
+
+    #[test]
+    fn set_resume_at_and_fire_roundtrip() {
+        let store = AgentStore::new();
+        let agent = test_agent(AgentType::Claude);
+        let id = agent.id.clone();
+        store.insert(agent);
+
+        let t = Utc::now();
+        assert!(store.set_resume_at(&id, Some(t)));
+        assert_eq!(store.get(&id).unwrap().resume_at, Some(t));
+
+        assert!(store.mark_auto_continue_fired(&id, t));
+        let a = store.get(&id).unwrap();
+        assert_eq!(a.resume_at, None);
+        assert_eq!(a.last_fired, Some(t));
     }
 
     #[test]
