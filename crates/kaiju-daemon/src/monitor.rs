@@ -426,9 +426,19 @@ mod tests {
         // Not armed.
         assert!(!should_fire(None, None, t, 60));
         // Armed, not due yet.
-        assert!(!should_fire(Some(t + chrono::Duration::seconds(10)), None, t, 60));
+        assert!(!should_fire(
+            Some(t + chrono::Duration::seconds(10)),
+            None,
+            t,
+            60
+        ));
         // Armed and due, never fired.
-        assert!(should_fire(Some(t - chrono::Duration::seconds(1)), None, t, 60));
+        assert!(should_fire(
+            Some(t - chrono::Duration::seconds(1)),
+            None,
+            t,
+            60
+        ));
         // Due but within backoff of last fire.
         assert!(!should_fire(
             Some(t - chrono::Duration::seconds(1)),
