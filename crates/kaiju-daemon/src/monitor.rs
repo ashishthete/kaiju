@@ -262,6 +262,7 @@ mod tests {
             status: None,
             tokens_used: Some(500),
             estimated_cost_usd: Some(1.25),
+            ..Default::default()
         };
 
         let metrics = updated_metrics(Some(started), &base_metrics(), &parsed, started);

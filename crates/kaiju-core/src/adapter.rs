@@ -18,6 +18,9 @@ pub struct ParsedOutput {
     pub status: Option<AgentStatus>,
     pub tokens_used: Option<u64>,
     pub estimated_cost_usd: Option<f64>,
+    /// `(reset_time, iana_timezone)` parsed from a usage-limit banner, e.g.
+    /// `("5:30pm", "Asia/Calcutta")`. `None` unless the agent is limited.
+    pub limit_reset: Option<(String, String)>,
 }
 
 /// Return the last non-empty, trimmed line of terminal output.

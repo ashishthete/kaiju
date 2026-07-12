@@ -4,6 +4,19 @@
 
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use chrono_tz::Tz;
+use regex::Regex;
+use std::sync::LazyLock;
+
+/// Matches `resets 5:30pm (Asia/Calcutta)` in a limit banner (case-insensitive).
+static LIMIT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)resets\s+(\d{1,2}(?::\d{2})?\s*[ap]m)\s*\(([^)]+)\)").unwrap()
+});
+
+/// Extract `(reset_time, iana_timezone)` from a limit banner, or `None`.
+pub fn parse_limit_reset(output: &str) -> Option<(String, String)> {
+    let caps = LIMIT_RE.captures(output)?;
+    Some((caps[1].trim().to_string(), caps[2].trim().to_string()))
+}
 
 /// Parse a 12-hour clock like "5:30pm" / "3pm" into `(hour_0_23, minute)`.
 /// Case-insensitive; minutes optional. Returns `None` on anything unexpected.
@@ -83,5 +96,15 @@ mod tests {
     fn reset_bad_timezone_is_none() {
         let now = Utc.with_ymd_and_hms(2026, 7, 12, 9, 0, 0).unwrap();
         assert_eq!(reset_to_utc(now, "5:30pm", "Not/AZone"), None);
+    }
+
+    #[test]
+    fn parse_limit_reset_extracts_time_and_zone() {
+        let out = "You've hit your session limit \u{b7} resets 5:30pm (Asia/Calcutta)";
+        assert_eq!(
+            parse_limit_reset(out),
+            Some(("5:30pm".to_string(), "Asia/Calcutta".to_string()))
+        );
+        assert_eq!(parse_limit_reset("just some output"), None);
     }
 }
