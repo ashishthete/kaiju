@@ -25,10 +25,8 @@ pub fn parse_clock(s: &str) -> Option<(u32, u32)> {
     let s = s.trim().to_lowercase();
     let (body, pm) = if let Some(b) = s.strip_suffix("pm") {
         (b, true)
-    } else if let Some(b) = s.strip_suffix("am") {
-        (b, false)
     } else {
-        return None;
+        (s.strip_suffix("am")?, false)
     };
     let body = body.trim();
     let (h, m) = match body.split_once(':') {
