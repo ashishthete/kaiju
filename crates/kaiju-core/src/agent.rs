@@ -45,6 +45,7 @@ pub enum AgentStatus {
     Error,
     Completed,
     Stuck,
+    Limited,
     Stopped,
 }
 
@@ -63,6 +64,7 @@ impl AgentStatus {
                 | AgentStatus::Running
                 | AgentStatus::WaitingForInput
                 | AgentStatus::Stuck
+                | AgentStatus::Limited
         )
     }
 }
@@ -118,6 +120,16 @@ pub struct Agent {
     pub started_at: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
     pub metrics: AgentMetrics,
+    /// Auto-inject `continue` at reset when this agent hits a usage limit.
+    #[serde(default)]
+    pub auto_continue: bool,
+    /// When armed, the UTC instant to fire the auto-continue at (from the limit
+    /// banner's reset time). `None` when not limited / not armed.
+    #[serde(default)]
+    pub resume_at: Option<DateTime<Utc>>,
+    /// Last time auto-continue fired, for the re-fire backoff.
+    #[serde(default)]
+    pub last_fired: Option<DateTime<Utc>>,
 }
 
 impl Agent {
@@ -144,6 +156,9 @@ impl Agent {
             started_at: None,
             updated_at: now,
             metrics: AgentMetrics::default(),
+            auto_continue: false,
+            resume_at: None,
+            last_fired: None,
         }
     }
 
@@ -337,5 +352,11 @@ mod tests {
         let json = serde_json::to_string(&g).unwrap();
         let back: Agent = serde_json::from_str(&json).unwrap();
         assert_eq!(back.compare_group.as_deref(), Some("grp-1"));
+    }
+
+    #[test]
+    fn limited_is_active_not_terminal() {
+        assert!(AgentStatus::Limited.is_active());
+        assert!(!AgentStatus::Limited.is_terminal());
     }
 }

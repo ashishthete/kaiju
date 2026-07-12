@@ -131,6 +131,7 @@ pub fn spawn_started_agent(
     let isolate = isolate || defaults.isolate;
     let mut agent = kaiju_core::agent::Agent::new(config);
     agent.isolate = isolate;
+    agent.auto_continue = defaults.auto_continue;
     let id = agent.id.clone();
     state.store.insert(agent);
     start_agent_internal(state, &id)?;

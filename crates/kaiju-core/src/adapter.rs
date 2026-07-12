@@ -18,6 +18,9 @@ pub struct ParsedOutput {
     pub status: Option<AgentStatus>,
     pub tokens_used: Option<u64>,
     pub estimated_cost_usd: Option<f64>,
+    /// `(reset_time, iana_timezone)` parsed from a usage-limit banner, e.g.
+    /// `("5:30pm", "Asia/Calcutta")`. `None` unless the agent is limited.
+    pub limit_reset: Option<(String, String)>,
 }
 
 /// Return the last non-empty, trimmed line of terminal output.
@@ -31,6 +34,17 @@ pub fn last_non_empty_line(output: &str) -> &str {
         .rev()
         .find(|line| !line.is_empty())
         .unwrap_or("")
+}
+
+/// The last `n` lines of `output` (fewer if it is shorter), rejoined with `\n`.
+///
+/// Lets adapters match "current screen" signals — like a usage-limit banner —
+/// without reaching into deep tmux scrollback, where a stale line from earlier
+/// in the session would otherwise produce a false match.
+pub fn tail_lines(output: &str, n: usize) -> String {
+    let lines: Vec<&str> = output.lines().collect();
+    let start = lines.len().saturating_sub(n);
+    lines[start..].join("\n")
 }
 
 /// Heuristic: does this line look like an interactive prompt awaiting input?
@@ -257,6 +271,15 @@ mod tests {
     fn last_non_empty_line_empty_input() {
         assert_eq!(last_non_empty_line(""), "");
         assert_eq!(last_non_empty_line("\n  \n"), "");
+    }
+
+    #[test]
+    fn tail_lines_returns_only_the_last_n() {
+        let output = "a\nb\nc\nd\ne";
+        assert_eq!(tail_lines(output, 2), "d\ne");
+        // Fewer lines than requested → the whole thing.
+        assert_eq!(tail_lines("a\nb", 5), "a\nb");
+        assert_eq!(tail_lines("", 3), "");
     }
 
     #[test]

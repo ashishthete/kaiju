@@ -98,3 +98,9 @@ test("renderDiff escapes HTML in diff content", () => {
   assert.ok(out.includes("&lt;script&gt;"));
   assert.ok(!out.includes("<script>x"));
 });
+
+test("limited is an attention status and sorts near the top", () => {
+  assert.ok(ATTENTION.has("limited"));
+  assert.equal(statusLabel("limited"), "Limited");
+  assert.ok(ORDER.limited < ORDER.running);
+});

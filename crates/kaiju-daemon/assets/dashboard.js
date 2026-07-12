@@ -46,6 +46,7 @@ async function loadPrefs() {
     document.getElementById("pref-model").value = s.default_model || "claude-opus-4-8";
     document.getElementById("pref-args").value = (s.default_extra_args || []).join(" ");
     document.getElementById("pref-isolate").checked = !!s.isolate;
+    document.getElementById("pref-continue").checked = !!s.auto_continue;
     document.getElementById("pref-maxtok").value = s.max_tokens != null ? s.max_tokens : "";
     document.getElementById("pref-maxcost").value = s.max_cost_usd != null ? s.max_cost_usd : "";
   } catch (e) { /* leave fields as-is */ }
@@ -61,6 +62,7 @@ async function savePrefs() {
     default_model: document.getElementById("pref-model").value.trim() || null,
     default_extra_args: args ? args.split(/\s+/) : [],
     isolate: document.getElementById("pref-isolate").checked,
+    auto_continue: document.getElementById("pref-continue").checked,
     max_tokens: tok === "" ? null : (parseInt(tok, 10) || null),
     max_cost_usd: cost === "" ? null : (parseFloat(cost) || null),
   };
@@ -480,7 +482,15 @@ async function refreshDetail() {
   wsEl.textContent = shortPath(ws);   // trim from the front; full path in the tooltip
   wsEl.title = ws;
   const upd = lastUpdated[selected];
-  document.getElementById("d-activity").textContent = upd ? "active " + timeAgo(upd) : "";
+  const resumeAt = (lastAgents.find(a => a.id === selected) || {}).resume_at;
+  const activityEl = document.getElementById("d-activity");
+  if (resumeAt && lastStatus[selected] === "limited") {
+    const t = new Date(resumeAt);
+    activityEl.textContent = "limited · resumes " +
+      t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } else {
+    activityEl.textContent = upd ? "active " + timeAgo(upd) : "";
+  }
   // Isolated agents reserve a dev-server port; offer a one-click link to it.
   const port = lastPort[selected];
   const portEl = document.getElementById("d-port");
@@ -575,6 +585,7 @@ async function createAgent(ev) {
     prompt: document.getElementById("n-prompt").value || null,
     isolate: document.getElementById("n-isolate").checked,
     auto_approve: document.getElementById("n-auto").checked,
+    auto_continue: document.getElementById("n-continue").checked,
     auto_start: true,
   };
   const model = document.getElementById("n-model").value.trim();
