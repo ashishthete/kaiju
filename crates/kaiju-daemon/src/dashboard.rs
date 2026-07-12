@@ -1131,6 +1131,7 @@ pub const PAGE: &str = r#"<!doctype html>
           <span class="activity" id="d-activity"></span>
           <span class="port" id="d-port"></span>
           <div class="grow"></div>
+          <button class="sm" id="d-autocont" onclick="toggleAutoContinue()" title="Auto-continue past usage limits" hidden></button>
           <button class="sm" id="d-interrupt" onclick="act('interrupt')">Interrupt</button>
           <button class="sm danger" id="d-stop" onclick="act('stop')">Stop</button>
           <button class="sm primary" id="d-resume" onclick="act('resume')" hidden>Resume</button>

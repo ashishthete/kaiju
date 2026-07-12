@@ -506,6 +506,14 @@ async function refreshDetail() {
   document.getElementById("d-resume").hidden = !terminal;
   document.getElementById("d-interrupt").hidden = terminal;
   document.getElementById("d-stop").hidden = terminal;
+  // Auto-continue toggle — only meaningful while the agent can still run.
+  const acBtn = document.getElementById("d-autocont");
+  if (acBtn) {
+    acBtn.hidden = terminal;
+    const on = !!(lastAgents.find(a => a.id === selected) || {}).auto_continue;
+    acBtn.textContent = on ? "⟳ auto-continue: on" : "⟳ auto-continue: off";
+    acBtn.classList.toggle("primary", on);
+  }
   // Keep the Diff tab current too (cheap: only re-renders on change).
   if (activeTab === "diff") { loadDiff(); return; }
   // Only the Logs tab pulls logs; the terminal manages itself.
@@ -563,6 +571,21 @@ async function act(path) {
     const res = await api("/agents/" + selected + "/" + path, { method: "POST" });
     note(res.ok ? (path + " sent") : ((await res.json()).error || (path + " failed")));
   } catch (e) { note(path + " failed"); }
+}
+
+// Flip auto-continue on/off for the selected (already-running) agent.
+async function toggleAutoContinue() {
+  if (!selected) return;
+  const enabled = !(lastAgents.find(a => a.id === selected) || {}).auto_continue;
+  noteBusy(enabled ? "enabling auto-continue…" : "disabling auto-continue…");
+  try {
+    const res = await api("/agents/" + selected + "/auto-continue", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    if (res.ok) { note("auto-continue " + (enabled ? "on" : "off")); refresh(); }
+    else { note((await res.json()).error || "toggle failed"); }
+  } catch (e) { note("toggle failed"); }
 }
 
 function toggleNew() {
