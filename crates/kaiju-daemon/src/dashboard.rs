@@ -272,6 +272,7 @@ pub const PAGE: &str = r#"<!doctype html>
     transition: background .15s ease;
   }
   .agent-card.s-waitingforinput::before,
+  .agent-card.s-limited::before,
   .agent-card.attention::before   { background: var(--amber); }
   .agent-card.s-stuck::before,
   .agent-card.s-error::before     { background: var(--red); }
@@ -304,6 +305,7 @@ pub const PAGE: &str = r#"<!doctype html>
   .dot.s-running       { background: var(--accent);  animation: dotPulse 1.6s ease-in-out infinite; }
   .dot.s-starting      { background: var(--blue);    animation: dotPulse 1.2s ease-in-out infinite; }
   .dot.s-waitingforinput { background: var(--amber); animation: dotPulse 2s ease-in-out infinite; }
+  .dot.s-limited       { background: var(--amber);    animation: dotPulse 2s ease-in-out infinite; }
   .dot.s-stuck         { background: var(--red);     animation: dotPulse 2.2s ease-in-out infinite; }
   .dot.s-error         { background: var(--red); }
   .dot.s-completed     { background: #4b6080; }
@@ -348,6 +350,7 @@ pub const PAGE: &str = r#"<!doctype html>
     flex: 0 0 auto;
   }
   .s-waitingforinput { background: var(--amber-weak); color: var(--amber); }
+  .s-limited           { background: var(--amber-weak); color: var(--amber); }
   .s-stuck, .s-error { background: var(--red-weak);   color: var(--red);   }
   .s-running         { background: var(--accent-weak); color: var(--accent);}
   .s-starting        { background: var(--blue-weak);   color: var(--blue);  }
@@ -978,6 +981,7 @@ pub const PAGE: &str = r#"<!doctype html>
     <label class="pfield"><span>Default args</span>
       <input id="pref-args" placeholder="--permission-mode acceptEdits"></label>
     <label class="check"><input type="checkbox" id="pref-isolate"> Isolate new agents in a git worktree</label>
+    <label class="check"><input type="checkbox" id="pref-continue"> Auto-continue new agents past usage limits</label>
     <label class="pfield"><span>Max tokens</span>
       <input id="pref-maxtok" type="number" min="0" placeholder="no cap"></label>
     <label class="pfield"><span>Max cost ($)</span>
@@ -1029,6 +1033,7 @@ pub const PAGE: &str = r#"<!doctype html>
         </label>
         <label class="check"><input type="checkbox" id="n-isolate"> Run in an isolated git worktree</label>
         <label class="check"><input type="checkbox" id="n-auto"> Auto-approve (run unattended — skips approval prompts)</label>
+        <label class="check"><input type="checkbox" id="n-continue"> Auto-continue past usage limits (resume at reset)</label>
       </details>
       <div class="modal-actions">
         <button type="button" onclick="closeNew()">Cancel</button>

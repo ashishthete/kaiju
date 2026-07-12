@@ -4,10 +4,10 @@
 // tests it's required as a CommonJS module.
 
 // Sort weight per status (lower sorts first — most urgent at the top).
-const ORDER = { waitingforinput: 0, stuck: 1, error: 2, starting: 3, running: 4, completed: 5, stopped: 6 };
+const ORDER = { waitingforinput: 0, limited: 1, stuck: 2, error: 3, starting: 4, running: 5, completed: 6, stopped: 7 };
 
 // Statuses that mean an agent needs the operator.
-const ATTENTION = new Set(["waitingforinput", "stuck"]);
+const ATTENTION = new Set(["waitingforinput", "stuck", "limited"]);
 
 // Statuses an agent can't act from (offer Resume, hide Interrupt/Stop).
 const TERMINAL = new Set(["stopped", "completed", "error"]);
@@ -16,6 +16,7 @@ const TERMINAL = new Set(["stopped", "completed", "error"]);
 const STATUS_LABELS = {
   waitingforinput: "Waiting for input", running: "Running", starting: "Starting",
   stuck: "Stuck", error: "Error", completed: "Completed", stopped: "Stopped",
+  limited: "Limited",
 };
 function statusLabel(s) { return STATUS_LABELS[s] || s || ""; }
 
