@@ -1,5 +1,6 @@
 mod binary;
 pub mod claude;
+pub mod limit;
 mod claude_events;
 mod claude_transcript;
 pub mod codex;
