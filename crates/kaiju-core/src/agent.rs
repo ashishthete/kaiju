@@ -45,6 +45,7 @@ pub enum AgentStatus {
     Error,
     Completed,
     Stuck,
+    Limited,
     Stopped,
 }
 
@@ -63,6 +64,7 @@ impl AgentStatus {
                 | AgentStatus::Running
                 | AgentStatus::WaitingForInput
                 | AgentStatus::Stuck
+                | AgentStatus::Limited
         )
     }
 }
@@ -337,5 +339,11 @@ mod tests {
         let json = serde_json::to_string(&g).unwrap();
         let back: Agent = serde_json::from_str(&json).unwrap();
         assert_eq!(back.compare_group.as_deref(), Some("grp-1"));
+    }
+
+    #[test]
+    fn limited_is_active_not_terminal() {
+        assert!(AgentStatus::Limited.is_active());
+        assert!(!AgentStatus::Limited.is_terminal());
     }
 }
