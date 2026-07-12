@@ -26,6 +26,7 @@ pub fn routes() -> Router<AppState> {
         .route("/agents/:id/promote", post(promote_agent))
         .route("/agents/:id/interrupt", post(interrupt_agent))
         .route("/agents/:id/input", post(send_input))
+        .route("/agents/:id/auto-continue", post(set_auto_continue))
         .route(
             "/agents/:id/files",
             post(crate::files::upload_file)
@@ -97,6 +98,12 @@ pub struct CreateAgentRequest {
 pub struct SendInputRequest {
     /// Text to type into the agent's session, submitted with Enter.
     pub text: String,
+}
+
+#[derive(Deserialize)]
+pub struct AutoContinueRequest {
+    /// Desired auto-continue state for the agent.
+    pub enabled: bool,
 }
 
 #[derive(Deserialize)]
@@ -195,6 +202,8 @@ pub struct AgentResponse {
     pub port: Option<u16>,
     /// When auto-continue will fire (RFC3339), if armed. Drives the dashboard badge.
     pub resume_at: Option<String>,
+    /// Whether this agent auto-continues past a usage limit (toggleable at runtime).
+    pub auto_continue: bool,
 }
 
 #[derive(Serialize)]
@@ -229,6 +238,7 @@ impl From<&kaiju_core::agent::Agent> for AgentResponse {
             compare_group: agent.compare_group.clone(),
             port: agent.port,
             resume_at: agent.resume_at.map(|t| t.to_rfc3339()),
+            auto_continue: agent.auto_continue,
         }
     }
 }
@@ -469,6 +479,22 @@ async fn send_input(
     match crate::tmux::TmuxManager::send_keys(&agent.session_name, &req.text) {
         Ok(()) => Ok(Json(serde_json::json!({ "status": "sent" }))),
         Err(e) => Err(err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
+    }
+}
+
+/// `POST /agents/:id/auto-continue` — turn auto-continue on/off for a running
+/// agent, so the flag can be changed after creation (not only in the New-Agent
+/// form). Returns the updated agent.
+async fn set_auto_continue(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<AutoContinueRequest>,
+) -> impl IntoResponse {
+    if state.store.set_auto_continue(&id, req.enabled) {
+        let agent = state.store.get(&id).unwrap();
+        Ok(Json(AgentResponse::from(&agent)))
+    } else {
+        Err(err(StatusCode::NOT_FOUND, "agent not found"))
     }
 }
 

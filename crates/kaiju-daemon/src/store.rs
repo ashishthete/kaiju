@@ -177,6 +177,28 @@ impl AgentStore {
         updated
     }
 
+    /// Toggle whether an agent auto-continues past a usage limit. Clears any
+    /// armed timer when turning it off, so it doesn't fire after being disabled.
+    pub fn set_auto_continue(&self, id: &str, enabled: bool) -> bool {
+        let updated = {
+            let mut agents = self.agents.write().unwrap();
+            match agents.get_mut(id) {
+                Some(agent) => {
+                    agent.auto_continue = enabled;
+                    if !enabled {
+                        agent.resume_at = None;
+                    }
+                    true
+                }
+                None => false,
+            }
+        };
+        if updated {
+            self.persist();
+        }
+        updated
+    }
+
     /// Record an auto-continue fire: clear the timer, stamp the fire time.
     pub fn mark_auto_continue_fired(&self, id: &str, now: DateTime<Utc>) -> bool {
         let updated = {
@@ -359,6 +381,26 @@ mod tests {
         let a = store.get(&id).unwrap();
         assert_eq!(a.resume_at, None);
         assert_eq!(a.last_fired, Some(t));
+    }
+
+    #[test]
+    fn set_auto_continue_toggles_and_disarms() {
+        let store = AgentStore::new();
+        let agent = test_agent(AgentType::Claude);
+        let id = agent.id.clone();
+        store.insert(agent);
+
+        assert!(store.set_auto_continue(&id, true));
+        assert!(store.get(&id).unwrap().auto_continue);
+
+        // Arm a timer, then turn auto-continue off — the timer must be cleared.
+        store.set_resume_at(&id, Some(Utc::now()));
+        assert!(store.set_auto_continue(&id, false));
+        let a = store.get(&id).unwrap();
+        assert!(!a.auto_continue);
+        assert_eq!(a.resume_at, None);
+
+        assert!(!store.set_auto_continue("missing", true));
     }
 
     #[test]
