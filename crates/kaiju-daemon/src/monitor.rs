@@ -31,6 +31,11 @@ const STUCK_THRESHOLD_SECS: i64 = 120;
 /// the agent is still streaming output should not raise a "needs input" alert.
 const WAIT_CONFIRM_SECS: i64 = 3;
 
+/// Seconds after an auto-continue fire before we may fire again for the same
+/// agent — stops a still-limited agent whose reset resolves to "now" from
+/// tight-looping.
+const MIN_RETRY_BACKOFF_SECS: i64 = 60;
+
 /// Per-agent record of the last distinct output seen, used to measure idle time.
 pub(crate) struct OutputActivity {
     fingerprint: u64,
@@ -42,6 +47,27 @@ fn fingerprint(output: &str) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     output.hash(&mut hasher);
     hasher.finish()
+}
+
+/// Pure: should we inject `continue` for a limited agent right now?
+pub fn should_fire(
+    resume_at: Option<DateTime<Utc>>,
+    last_fired: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+    backoff_secs: i64,
+) -> bool {
+    let Some(resume_at) = resume_at else {
+        return false;
+    };
+    if now < resume_at {
+        return false;
+    }
+    if let Some(fired) = last_fired {
+        if (now - fired).num_seconds() < backoff_secs {
+            return false;
+        }
+    }
+    true
 }
 
 /// Pure: decide an agent's next status from the parser signal and idle time.
@@ -195,6 +221,30 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
                 notify::alert(agent, next);
             }
             state.store.update_status(&agent.id, next);
+        }
+
+        // Auto-continue: arm a timer while limited, then inject `continue` at
+        // reset. Self-correcting — if the agent is still limited afterward, the
+        // next poll re-arms from the (possibly new) banner.
+        if next == AgentStatus::Limited && agent.auto_continue {
+            // Arm once; don't overwrite an already-armed timer.
+            if agent.resume_at.is_none() {
+                if let Some((time, tz)) = &parsed.limit_reset {
+                    if let Some(at) = kaiju_adapters::limit::reset_to_utc(now, time, tz) {
+                        state.store.set_resume_at(&agent.id, Some(at));
+                    }
+                }
+            }
+            // Re-read resume_at so an arm+fire can happen in the same poll when
+            // the reset time is already in the past.
+            let resume_at = state.store.get(&agent.id).and_then(|a| a.resume_at);
+            if should_fire(resume_at, agent.last_fired, now, MIN_RETRY_BACKOFF_SECS) {
+                let _ = TmuxManager::send_keys(&agent.session_name, "continue");
+                state.store.mark_auto_continue_fired(&agent.id, now);
+            }
+        } else if agent.resume_at.is_some() {
+            // Recovered / moved on — disarm.
+            state.store.set_resume_at(&agent.id, None);
         }
     }
 
@@ -368,5 +418,30 @@ mod tests {
             W,
         );
         assert_eq!(next, AgentStatus::WaitingForInput);
+    }
+
+    #[test]
+    fn should_fire_respects_timer_and_backoff() {
+        let t = Utc::now();
+        // Not armed.
+        assert!(!should_fire(None, None, t, 60));
+        // Armed, not due yet.
+        assert!(!should_fire(Some(t + chrono::Duration::seconds(10)), None, t, 60));
+        // Armed and due, never fired.
+        assert!(should_fire(Some(t - chrono::Duration::seconds(1)), None, t, 60));
+        // Due but within backoff of last fire.
+        assert!(!should_fire(
+            Some(t - chrono::Duration::seconds(1)),
+            Some(t - chrono::Duration::seconds(30)),
+            t,
+            60
+        ));
+        // Due and past backoff.
+        assert!(should_fire(
+            Some(t - chrono::Duration::seconds(1)),
+            Some(t - chrono::Duration::seconds(90)),
+            t,
+            60
+        ));
     }
 }
