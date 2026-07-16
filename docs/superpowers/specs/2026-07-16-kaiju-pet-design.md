@@ -426,8 +426,12 @@ They must be bundled at compile time so the companion works offline.
 - Polling may surface an event up to roughly four seconds after the underlying
   terminal change (daemon detection plus pet polling). This is acceptable for
   quick human replies.
-- The initial art style and animation set require a separate visual-design pass;
-  behavior and accessibility do not depend on a particular mascot design.
+- The intended mascot is an **owl** — a quiet, perched sentinel whose natural
+  vocabulary (head swivel toward you, wide-eyed alert, ruffled feathers, a single
+  wing-flap on completion) maps directly onto the visual-states table. A dog was
+  considered and remains a fallback. The initial art style and animation set still
+  require a separate visual-design pass; behavior and accessibility do not depend on
+  the chosen mascot.
 - A future daemon event stream could reduce latency, but is not justified for
   MVP.
 - Quick action buttons such as **Approve**, **Continue**, or **Interrupt** should
