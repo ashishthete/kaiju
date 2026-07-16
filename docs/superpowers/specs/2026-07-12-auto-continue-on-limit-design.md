@@ -4,6 +4,19 @@
 **Status:** Approved (design), pending implementation plan
 **Scope:** Claude Code adapter only (first iteration)
 
+> **Revision 2026-07-16 — detection moved to the visible pane.** The original
+> design detected the banner in a fixed trailing-line window of the scrollback
+> capture (`LIMIT_TAIL_LINES`). In practice Claude Code's live TUI keeps a
+> ~14-line footer (prompt box, separators, git/status/agents) permanently below
+> the banner, so a currently-active banner sat ~18 lines from the bottom —
+> outside the window — and `resume_at` never armed, so auto-continue silently
+> never fired. Fixed by detecting the banner on the **visible pane only**
+> (`tmux capture-pane -p`, no scrollback) via `Adapter::detect_limit`: a banner
+> on the visible screen means the agent is stalled at it; once it resumes the
+> banner scrolls into history and is absent. This staleness signal is
+> independent of terminal height. `ParsedOutput.limit_reset` and the
+> `parse_output` limit branch were removed in favour of `detect_limit`.
+
 ## Problem
 
 When a Claude Code agent hits its usage/session limit mid-run, it stops and

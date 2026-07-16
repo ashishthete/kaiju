@@ -18,9 +18,6 @@ pub struct ParsedOutput {
     pub status: Option<AgentStatus>,
     pub tokens_used: Option<u64>,
     pub estimated_cost_usd: Option<f64>,
-    /// `(reset_time, iana_timezone)` parsed from a usage-limit banner, e.g.
-    /// `("5:30pm", "Asia/Calcutta")`. `None` unless the agent is limited.
-    pub limit_reset: Option<(String, String)>,
 }
 
 /// Return the last non-empty, trimmed line of terminal output.
@@ -184,6 +181,22 @@ pub trait Adapter: Send + Sync {
     /// Called periodically by the daemon with the latest pane output.
     /// Return `ParsedOutput::default()` if nothing useful can be extracted.
     fn parse_output(&self, output: &str) -> ParsedOutput;
+
+    /// Detect a usage/session-limit banner on the agent's *visible* screen
+    /// (no scrollback), returning the raw `(reset_time, iana_timezone)` — e.g.
+    /// `("5:30pm", "Asia/Calcutta")` — when the agent is currently limited, so
+    /// the monitor can schedule an auto-continue.
+    ///
+    /// Given the visible pane specifically: a banner that has scrolled into
+    /// history after the agent resumed is absent, so it can't falsely
+    /// re-trigger. That staleness signal is independent of terminal height,
+    /// unlike a fixed trailing-line count (a tall CLI footer can push a live
+    /// banner past it).
+    ///
+    /// Default: the CLI has no usage-limit banner (returns `None`).
+    fn detect_limit(&self, _visible_pane: &str) -> Option<(String, String)> {
+        None
+    }
 
     /// Parse one line of the CLI's *structured* output stream (e.g. JSON), when
     /// the CLI is run in a structured mode. This yields precise status/metrics
