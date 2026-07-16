@@ -100,6 +100,28 @@ impl TmuxManager {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
+    /// Capture only the *visible* pane (no scrollback).
+    ///
+    /// Used for usage-limit detection: a banner still on the visible screen
+    /// means the agent is currently stalled at it, while a banner that has
+    /// scrolled into history (the agent resumed) is absent. This is a
+    /// staleness signal independent of terminal height — unlike a fixed
+    /// trailing-line count, which a tall CLI footer can push a live banner past.
+    pub fn capture_pane_visible(session_name: &str) -> Result<String> {
+        let output = Command::new("tmux")
+            .args(["capture-pane", "-t", session_name, "-p"])
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(NexusError::Tmux(format!(
+                "failed to capture visible pane '{session_name}': {stderr}"
+            )));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
     /// Kill a tmux session.
     pub fn kill_session(session_name: &str) -> Result<()> {
         let output = Command::new("tmux")

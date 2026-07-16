@@ -214,13 +214,25 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
         }
         let idle_secs = (now - record.since).num_seconds();
 
-        let next = resolve_status(
+        let mut next = resolve_status(
             agent.status,
             parsed.status,
             idle_secs,
             STUCK_THRESHOLD_SECS,
             WAIT_CONFIRM_SECS,
         );
+
+        // A usage/session limit takes priority: the session is alive but stalled
+        // until reset. Detect it on the *visible* pane (no scrollback) so a
+        // banner that has scrolled into history after the agent resumed no
+        // longer matches — a staleness signal independent of terminal height.
+        let limit_reset = TmuxManager::capture_pane_visible(&agent.session_name)
+            .ok()
+            .and_then(|visible| adapter.detect_limit(&visible));
+        if limit_reset.is_some() {
+            next = AgentStatus::Limited;
+        }
+
         if next != agent.status {
             if notify::should_alert(agent.status, next) {
                 notify::alert(agent, next);
@@ -235,7 +247,7 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
             // Arm once the stream has actually stopped (don't act on a banner
             // seen mid-output), and never overwrite an already-armed timer.
             if idle_secs >= LIMIT_CONFIRM_SECS && agent.resume_at.is_none() {
-                if let Some((time, tz)) = &parsed.limit_reset {
+                if let Some((time, tz)) = &limit_reset {
                     if let Some(at) = kaiju_adapters::limit::reset_to_utc(now, time, tz) {
                         state.store.set_resume_at(&agent.id, Some(at));
                     }
@@ -318,7 +330,6 @@ mod tests {
             status: None,
             tokens_used: Some(500),
             estimated_cost_usd: Some(1.25),
-            ..Default::default()
         };
 
         let metrics = updated_metrics(Some(started), &base_metrics(), &parsed, started);

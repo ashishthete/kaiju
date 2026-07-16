@@ -1,6 +1,6 @@
 use kaiju_core::adapter::{
     controlling_prompt_line, ends_with_selection_menu, last_non_empty_line, looks_like_prompt,
-    tail_lines, Adapter, ParsedOutput, SessionInfo,
+    Adapter, ParsedOutput, SessionInfo,
 };
 use kaiju_core::agent::{AgentConfig, AgentStatus, AgentType};
 use regex::Regex;
@@ -14,11 +14,6 @@ static COST_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"Total cost:\s*\$(\d+\.?\d*)").unwrap());
 static TOKEN_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[Tt]okens?\s*(?:used)?:?\s*(\d[\d,]*)").unwrap());
-
-/// How many trailing lines of the capture count as the "current screen" when
-/// looking for the usage-limit banner. Small enough that a banner scrolled up
-/// into history (e.g. after the agent resumes) no longer matches.
-const LIMIT_TAIL_LINES: usize = 12;
 
 /// Adapter for Claude Code CLI.
 ///
@@ -59,23 +54,20 @@ impl Adapter for ClaudeAdapter {
         cmd
     }
 
+    fn detect_limit(&self, visible_pane: &str) -> Option<(String, String)> {
+        // Only the current screen is passed in (no scrollback), so a banner that
+        // has scrolled into history after the agent resumed is naturally absent
+        // — no fixed-line-count heuristic needed. Gate on the banner keywords
+        // (case-insensitive) before the more expensive regex parse.
+        let lc = visible_pane.to_lowercase();
+        if lc.contains("session limit") || lc.contains("usage limit") {
+            return crate::limit::parse_limit_reset(visible_pane);
+        }
+        None
+    }
+
     fn parse_output(&self, output: &str) -> ParsedOutput {
         let mut result = ParsedOutput::default();
-
-        // A usage/session limit takes priority: the session is alive but stalled
-        // until reset. Detect it before the waiting/error branches so the prompt
-        // line that sits below the banner doesn't mask it. Match only against the
-        // current-screen tail (case-insensitively) — a banner scrolled up into
-        // scrollback after the agent resumes is stale and must not re-trigger.
-        let tail = tail_lines(output, LIMIT_TAIL_LINES);
-        let tail_lc = tail.to_lowercase();
-        if tail_lc.contains("session limit") || tail_lc.contains("usage limit") {
-            if let Some(reset) = crate::limit::parse_limit_reset(&tail) {
-                result.status = Some(AgentStatus::Limited);
-                result.limit_reset = Some(reset);
-                return result;
-            }
-        }
 
         let last = last_non_empty_line(output);
         let prompt = controlling_prompt_line(output);
@@ -152,7 +144,6 @@ impl Adapter for ClaudeAdapter {
             status: None,
             tokens_used: Some(usage.tokens_used()),
             estimated_cost_usd: crate::pricing::cost(&usage),
-            ..Default::default()
         })
     }
 
@@ -394,36 +385,34 @@ mod tests {
     }
 
     #[test]
-    fn session_limit_banner_sets_limited() {
-        let out = "You've hit your session limit \u{b7} resets 5:30pm (Asia/Calcutta)\n\
-                   /upgrade or /usage-credits to finish what you're working on.\n\n\u{273b}";
-        let parsed = ClaudeAdapter.parse_output(out);
-        assert_eq!(parsed.status, Some(AgentStatus::Limited));
+    fn detect_limit_reads_banner_on_visible_screen() {
+        // The visible pane (no scrollback) still shows the banner above the
+        // prompt footer — the agent is currently stalled at the limit.
+        let visible = "You've hit your session limit \u{b7} resets 5:30pm (Asia/Calcutta)\n\
+                       /upgrade or /usage-credits to finish what you're working on.\n\n\u{273b}";
         assert_eq!(
-            parsed.limit_reset,
+            ClaudeAdapter.detect_limit(visible),
             Some(("5:30pm".to_string(), "Asia/Calcutta".to_string()))
         );
     }
 
     #[test]
-    fn plain_error_line_is_not_limited() {
+    fn detect_limit_ignores_plain_error_line() {
+        assert_eq!(
+            ClaudeAdapter.detect_limit("Error: API rate limit exceeded"),
+            None
+        );
+        // A plain error line still parses as an ordinary error status.
         let parsed = ClaudeAdapter.parse_output("Error: API rate limit exceeded");
         assert_eq!(parsed.status, Some(AgentStatus::Error));
-        assert_eq!(parsed.limit_reset, None);
     }
 
     #[test]
-    fn stale_limit_banner_in_scrollback_is_ignored() {
-        // The banner sits far above the current screen (the agent resumed and
-        // kept working). It must NOT be re-classified as Limited.
-        let mut out =
-            String::from("You've hit your session limit \u{b7} resets 5:30pm (Asia/Calcutta)\n");
-        for i in 0..20 {
-            out.push_str(&format!("working on step {i}...\n"));
-        }
-        out.push_str("Thinking\u{2026}\n\u{273b}");
-        let parsed = ClaudeAdapter.parse_output(&out);
-        assert_ne!(parsed.status, Some(AgentStatus::Limited));
-        assert_eq!(parsed.limit_reset, None);
+    fn detect_limit_absent_when_banner_scrolled_off_screen() {
+        // The agent resumed and kept working, so the banner is no longer on the
+        // visible screen. Detection sees only the current screen, so it returns
+        // None — no false re-trigger, regardless of how tall the terminal is.
+        let visible = "working on step 18...\nworking on step 19...\nThinking\u{2026}\n\u{273b}";
+        assert_eq!(ClaudeAdapter.detect_limit(visible), None);
     }
 }
