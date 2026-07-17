@@ -224,10 +224,46 @@ impl eframe::App for PetApp {
             .get_or_insert_with(|| crate::window::load_sprite(ui.ctx()))
             .clone();
 
+        // Idle bob: a gentle in-place vertical float (never wanders the screen,
+        // per the spec). Faster/taller when an agent needs attention. Disabled
+        // under reduced-motion; otherwise we keep repainting so it animates even
+        // with no input.
+        let bob = if self.prefs.reduced_motion {
+            0.0
+        } else {
+            let t = ui.input(|i| i.time);
+            let (amp, speed) = if self.out.visual.is_calm() {
+                (3.0_f64, 1.6_f64)
+            } else {
+                (6.0, 3.4)
+            };
+            ui.ctx().request_repaint();
+            (t * speed).sin() * amp
+        };
+
         ui.vertical_centered(|ui| {
-            // The mascot itself is the click target that opens/closes the bubble.
+            // Push the sprite down by a always-positive, time-varying amount so it
+            // visibly floats (amp + sin ∈ [0, 2·amp]).
+            let amp = if self.out.visual.is_calm() { 3.0 } else { 6.0 };
+            ui.add_space((amp + bob) as f32);
+
+            // The mascot itself is the click target (toggles the bubble) and the
+            // drag handle (moves the frameless window — "place it anywhere").
             let sized = egui::load::SizedTexture::new(sprite.id(), egui::vec2(96.0, 96.0));
-            let pet = ui.add(egui::Button::image(egui::Image::new(sized)).frame(false));
+            let pet = ui.add(egui::Image::new(sized).sense(egui::Sense::click_and_drag()));
+            if pet.dragged() {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            }
+            // Right-click menu: the only built-in way to quit the pet.
+            let dash_url = self.prefs.daemon_url.clone();
+            pet.context_menu(|ui| {
+                if ui.button("Open dashboard").clicked() {
+                    let _ = open_dashboard(&dash_url);
+                }
+                if ui.button("Quit pet").clicked() {
+                    std::process::exit(0);
+                }
+            });
 
             // State label + unread badge under the sprite.
             let badge = if self.out.unread_count > 0 {

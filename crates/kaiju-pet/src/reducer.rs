@@ -14,6 +14,17 @@ pub enum VisualState {
     Celebrate,
 }
 
+impl VisualState {
+    /// Calm states get a slow, small idle bob; attention/celebrate states get a
+    /// livelier one. Used only for animation tuning.
+    pub fn is_calm(&self) -> bool {
+        matches!(
+            self,
+            VisualState::Idle | VisualState::Working | VisualState::Disconnected
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttentionEvent {
     pub agent_id: String,
