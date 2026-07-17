@@ -18,6 +18,8 @@ pub struct PetApp {
     send_in_flight: bool,
     status_line: String,
     log_lines: Vec<String>,
+    // Lazily uploaded on the first frame (needs an egui Context).
+    sprite: Option<egui::TextureHandle>,
 }
 
 impl PetApp {
@@ -43,6 +45,7 @@ impl PetApp {
             send_in_flight: false,
             status_line: String::new(),
             log_lines: Vec::new(),
+            sprite: None,
         }
     }
 
@@ -215,19 +218,38 @@ impl eframe::App for PetApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let badge = if self.out.unread_count > 0 {
-            format!("  ({})", self.out.unread_count)
-        } else {
-            String::new()
-        };
-        let pet = ui.button(format!("🤖 {}{}", Self::label_for(self.out.visual), badge));
-        if pet.clicked() {
-            self.expanded = !self.expanded;
-            if !self.expanded {
-                // Re-open should re-fetch logs and re-mark the selection.
-                self.shown_for = None;
+        // Upload the sprite texture on the first frame.
+        let sprite = self
+            .sprite
+            .get_or_insert_with(|| crate::window::load_sprite(ui.ctx()))
+            .clone();
+
+        ui.vertical_centered(|ui| {
+            // The mascot itself is the click target that opens/closes the bubble.
+            let sized = egui::load::SizedTexture::new(sprite.id(), egui::vec2(96.0, 96.0));
+            let pet = ui.add(egui::Button::image(egui::Image::new(sized)).frame(false));
+
+            // State label + unread badge under the sprite.
+            let badge = if self.out.unread_count > 0 {
+                format!("  ({})", self.out.unread_count)
+            } else {
+                String::new()
+            };
+            ui.label(
+                egui::RichText::new(format!("{}{}", Self::label_for(self.out.visual), badge))
+                    .color(accent_for(self.out.visual))
+                    .strong(),
+            );
+
+            if pet.clicked() {
+                self.expanded = !self.expanded;
+                if !self.expanded {
+                    // Re-open should re-fetch logs and re-mark the selection.
+                    self.shown_for = None;
+                }
             }
-        }
+        });
+
         if self.expanded {
             self.draw_bubble(ui);
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -235,6 +257,20 @@ impl eframe::App for PetApp {
                 self.shown_for = None;
             }
         }
+    }
+}
+
+/// Accent color per visual state (spec's color mapping; color is supplemental to
+/// the always-present text label).
+fn accent_for(v: VisualState) -> egui::Color32 {
+    match v {
+        VisualState::Disconnected => egui::Color32::GRAY,
+        VisualState::Idle => egui::Color32::LIGHT_GRAY,
+        VisualState::Working => egui::Color32::from_rgb(96, 165, 250), // blue
+        VisualState::Waiting | VisualState::Stuck => egui::Color32::from_rgb(245, 180, 60), // amber
+        VisualState::Limited => egui::Color32::from_rgb(180, 140, 255), // purple
+        VisualState::Error => egui::Color32::from_rgb(240, 90, 90),    // red
+        VisualState::Celebrate => egui::Color32::from_rgb(90, 210, 130), // green
     }
 }
 

@@ -1,6 +1,23 @@
 /// Bundled attention cue, written to a temp file and played once via afplay.
 const CUE_WAV: &[u8] = include_bytes!("../assets/attention.wav");
 
+/// Bundled mascot sprite (placeholder terminal-robot; swap this PNG for final art).
+const PET_PNG: &[u8] = include_bytes!("../assets/pet.png");
+
+/// Decode the bundled sprite and upload it as a GPU texture once. On a decode
+/// failure returns a 1×1 transparent texture so the UI still renders.
+pub fn load_sprite(ctx: &egui::Context) -> egui::TextureHandle {
+    let color = match image::load_from_memory(PET_PNG) {
+        Ok(dynamic) => {
+            let rgba = dynamic.to_rgba8();
+            let (w, h) = rgba.dimensions();
+            egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], rgba.as_raw())
+        }
+        Err(_) => egui::ColorImage::from_rgba_unmultiplied([1, 1], &[0, 0, 0, 0]),
+    };
+    ctx.load_texture("pet-sprite", color, egui::TextureOptions::LINEAR)
+}
+
 pub fn viewport(pos: crate::prefs::WindowPos) -> egui::ViewportBuilder {
     egui::ViewportBuilder::default()
         .with_decorations(false)
@@ -8,7 +25,7 @@ pub fn viewport(pos: crate::prefs::WindowPos) -> egui::ViewportBuilder {
         .with_always_on_top()
         .with_taskbar(false)
         .with_resizable(false)
-        .with_inner_size([220.0, 160.0])
+        .with_inner_size([240.0, 340.0])
         .with_position([pos.x as f32, pos.y as f32])
 }
 
