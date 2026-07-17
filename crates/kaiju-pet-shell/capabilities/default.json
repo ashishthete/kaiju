@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "kaiju-pet",
+  "description": "Permissions required by the local Kaiju pet webview",
+  "windows": ["kaiju-pet"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging"
+  ]
+}

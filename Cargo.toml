@@ -5,6 +5,8 @@ members = [
     "crates/kaiju-daemon",
     "crates/kaiju-cli",
     "crates/kaiju-pet",
+    "crates/kaiju-pet-core",
+    "crates/kaiju-pet-shell",
 ]
 default-members = [
     "crates/kaiju-core",
@@ -23,6 +25,7 @@ authors = ["Ashish Thete <thete.ashish1@gmail.com>"]
 [workspace.dependencies]
 kaiju-core = { path = "crates/kaiju-core" }
 kaiju-adapters = { path = "crates/kaiju-adapters" }
+kaiju-pet-core = { path = "crates/kaiju-pet-core" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

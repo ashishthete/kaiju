@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::model::{AgentSnapshot, Status};
+use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum VisualState {
     Disconnected,
     Idle,
@@ -25,16 +27,17 @@ impl VisualState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AttentionEvent {
     pub agent_id: String,
     pub status: Status,
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ReducerOutput {
     pub visual: VisualState,
+    pub agents: Vec<AgentSnapshot>,
     pub ordered_attention: Vec<AgentSnapshot>,
     pub new_events: Vec<AttentionEvent>,
     pub unread_count: usize,
@@ -61,6 +64,7 @@ impl Reducer {
         self.baseline_next = true;
         ReducerOutput {
             visual: VisualState::Disconnected,
+            agents: Vec::new(),
             ordered_attention: Vec::new(),
             new_events: Vec::new(),
             unread_count: self.unread.len(),
@@ -111,6 +115,7 @@ impl Reducer {
 
         ReducerOutput {
             visual,
+            agents: agents.to_vec(),
             ordered_attention,
             new_events,
             unread_count: self.unread.len(),

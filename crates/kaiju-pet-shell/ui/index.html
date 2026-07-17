@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kaiju Pet</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+        --accent: #73e2a7;
+        --accent-strong: #2ecf83;
+        --ink: #eefdf6;
+        --muted: #a9bdb4;
+        --panel: rgba(15, 24, 22, .95);
+      }
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+      body { user-select: none; -webkit-user-select: none; }
+      button, input, select { font: inherit; }
+      button { color: inherit; }
+
+      #app { position: relative; width: 100%; height: 100%; }
+      #stage { position: absolute; inset: 0; }
+      .drag-zone { cursor: grab; }
+      .drag-zone:active { cursor: grabbing; }
+
+      .pet-wrap {
+        position: absolute;
+        right: 7px;
+        bottom: 5px;
+        width: 174px;
+        height: 174px;
+        filter: drop-shadow(0 12px 11px rgba(0,0,0,.36));
+      }
+      .event-fx { position:absolute; inset:-10px; z-index:-1; pointer-events:none; overflow:visible; }
+      .signal-ring { position:absolute; inset:27px; border:3px solid var(--accent); border-radius:50%; opacity:0; }
+      .scan-line { position:absolute; left:27px; right:27px; top:20px; height:3px; opacity:0; background:linear-gradient(90deg,transparent,var(--accent),transparent); box-shadow:0 0 10px var(--accent); }
+      .spark { position:absolute; left:50%; top:48%; width:7px; height:20px; border-radius:999px; opacity:0; background:var(--accent); transform-origin:50% 74px; }
+      .spark.s1{transform:rotate(0deg)} .spark.s2{transform:rotate(60deg)} .spark.s3{transform:rotate(120deg)}
+      .spark.s4{transform:rotate(180deg)} .spark.s5{transform:rotate(240deg)} .spark.s6{transform:rotate(300deg)}
+      .aura {
+        position: absolute;
+        inset: 28px 17px 12px;
+        border-radius: 50%;
+        background: radial-gradient(circle, color-mix(in srgb, var(--accent) 34%, transparent), transparent 70%);
+        animation: aura 3.4s ease-in-out infinite;
+      }
+      .kaiju { position: absolute; inset: 0; transform-origin: 50% 85%; animation: breathe 3.2s ease-in-out infinite; }
+      .optimus {
+        position:absolute; inset:-10px -18px -6px; display:block; transform-origin:50% 88%;
+        background:url("assets/optimus-prime-v2.png") center/contain no-repeat;
+        filter:drop-shadow(0 10px 8px rgba(0,0,0,.42));
+        animation:robot-breathe 2.8s ease-in-out infinite;
+      }
+      .optimus > * { display:none; }
+      #stage[data-character="optimus"] .kaiju { display:none; }
+      #stage[data-character="kaiju"] .optimus, #stage[data-character="kaiju"] .truck { display:none; }
+      .truck {
+        position:absolute; inset:-2px -24px -4px; display:block; transform-origin:50% 85%;
+        background:url("assets/optimus-truck-v2.png") center/contain no-repeat;
+        filter:drop-shadow(0 10px 8px rgba(0,0,0,.44)); animation:truck-idle 2.4s ease-in-out infinite;
+      }
+      #stage[data-form="robot"] .truck { display:none; }
+      #stage[data-form="truck"] .optimus { display:none; }
+      .pet-wrap.form-transition .optimus, .pet-wrap.form-transition .truck { animation:transform-pop .38s cubic-bezier(.2,.85,.3,1.2) 1; }
+      .pet-wrap.form-transition .signal-ring { animation:event-ring .38s ease-out 1; }
+      .pet-wrap.is-driving .truck { animation:truck-drive .32s ease-in-out infinite; }
+      .pet-wrap.is-driving .aura { transform:scaleX(1.25); opacity:.9; }
+      .o-head {
+        position:absolute; z-index:5; left:45px; top:5px; width:58px; height:52px;
+        clip-path:polygon(13% 0,87% 0,100% 22%,91% 83%,68% 100%,32% 100%,9% 83%,0 22%);
+        background:linear-gradient(90deg,#164a9c 0 18%,#dfe8ee 19% 36%,#1c5ab9 37% 63%,#dfe8ee 64% 81%,#164a9c 82%);
+        border:2px solid #d9efff; filter:drop-shadow(0 3px 0 #092c65);
+      }
+      .o-crest { position:absolute; left:25px; top:-9px; width:9px; height:24px; background:#d7e2e8; clip-path:polygon(50% 0,100% 100%,0 100%); }
+      .o-ear { position:absolute; top:4px; width:7px; height:26px; background:#2c73d5; }
+      .o-ear.left { left:-7px; transform:skewY(-15deg); } .o-ear.right { right:-7px; transform:skewY(15deg); }
+      .o-eye { position:absolute; top:22px; width:14px; height:5px; border-radius:50%; background:#81f7ff; box-shadow:0 0 7px #5aefff; animation:robot-blink 5s infinite; }
+      .o-eye.left { left:9px; } .o-eye.right { right:9px; }
+      .o-mask { position:absolute; left:17px; top:31px; width:25px; height:17px; clip-path:polygon(10% 0,90% 0,100% 75%,50% 100%,0 75%); background:#aab7bf; border-top:2px solid #eff8fb; }
+      .o-torso {
+        position:absolute; z-index:3; left:29px; top:49px; width:90px; height:71px;
+        clip-path:polygon(15% 0,85% 0,100% 24%,88% 100%,12% 100%,0 24%);
+        background:linear-gradient(90deg,#ad232a 0 13%,#ec3b3d 14% 42%,#9aa9b0 43% 57%,#ec3b3d 58% 86%,#ad232a 87%);
+        border-top:3px solid #ff7a6f;
+      }
+      .o-window { position:absolute; top:13px; width:28px; height:27px; background:linear-gradient(145deg,#a8efff,#367ec4 70%); border:2px solid #d5f7ff; }
+      .o-window.left { left:13px; transform:skewX(-8deg); } .o-window.right { right:13px; transform:skewX(8deg); }
+      .o-grill { position:absolute; left:33px; bottom:7px; width:25px; height:17px; border-radius:3px; background:repeating-linear-gradient(0deg,#84949b 0 2px,#dce5e9 2px 4px); }
+      .o-arm { position:absolute; z-index:2; top:53px; width:29px; height:73px; border-radius:8px; background:linear-gradient(#e43a3c 0 45%,#245eb4 46% 100%); border:2px solid #cce2ed; transform-origin:50% 8%; }
+      .o-arm.left { left:5px; transform:rotate(8deg); animation:robot-arm-left 2.8s ease-in-out infinite; }
+      .o-arm.right { right:5px; transform:rotate(-8deg); animation:robot-arm-right 1.5s ease-in-out infinite; }
+      .o-leg { position:absolute; z-index:2; top:112px; width:37px; height:41px; background:linear-gradient(90deg,#174893,#3379d5,#153b7d); border:2px solid #bbd7e8; border-radius:5px 5px 10px 10px; }
+      .o-leg.left { left:34px; } .o-leg.right { right:34px; }
+      .o-foot { position:absolute; left:-7px; bottom:-4px; width:47px; height:16px; border-radius:4px 9px 6px 6px; background:#163d7c; border:2px solid #b9d3e2; }
+      .tail {
+        position: absolute; width: 78px; height: 36px; left: 8px; bottom: 32px;
+        border-radius: 75% 10% 70% 45%; background: #188f70; transform: rotate(12deg);
+        transform-origin: 90% 50%; animation: tail 2.5s ease-in-out infinite;
+      }
+      .body {
+        position: absolute; width: 103px; height: 106px; left: 43px; bottom: 20px;
+        border-radius: 52% 52% 42% 44%;
+        background: linear-gradient(135deg, #45d49a, #168568 78%);
+        border: 3px solid rgba(238,253,246,.9);
+        box-shadow: inset -13px -10px 0 rgba(4,69,58,.2), inset 9px 8px 0 rgba(255,255,255,.12);
+      }
+      .belly { position:absolute; width:57px; height:68px; left:23px; top:29px; border-radius:50%; background:rgba(190,255,220,.28); }
+      .head {
+        position: absolute; width: 105px; height: 78px; left: 43px; top: 18px;
+        border-radius: 54% 56% 45% 46%;
+        background: linear-gradient(145deg, #63e7aa, #1b9b77 76%);
+        border: 3px solid rgba(238,253,246,.92);
+        box-shadow: inset -9px -7px 0 rgba(5,75,59,.15);
+        animation: head 3.2s ease-in-out infinite;
+      }
+      .horn { position:absolute; top:-14px; width:19px; height:27px; background:#defbea; clip-path:polygon(50% 0, 100% 100%, 0 100%); }
+      .horn.one { left:18px; transform:rotate(-13deg); }
+      .horn.two { right:18px; transform:rotate(13deg); }
+      .eye { position:absolute; top:24px; width:16px; height:18px; border-radius:50%; background:#0b2822; animation: blink 5s infinite; }
+      .eye::after { content:""; position:absolute; width:5px; height:5px; left:3px; top:3px; border-radius:50%; background:#fff; }
+      .eye.left { left:23px; } .eye.right { right:23px; }
+      .mouth { position:absolute; left:39px; top:51px; width:25px; height:10px; border-bottom:3px solid #0a5747; border-radius:50%; }
+      .arm { position:absolute; width:26px; height:60px; top:60px; border-radius:45%; background:#22a87e; transform-origin:50% 12%; }
+      .arm.left { left:29px; transform:rotate(22deg); animation: arm-left 3.2s ease-in-out infinite; }
+      .arm.right { right:22px; transform:rotate(-22deg); animation: arm-right 3.2s ease-in-out infinite; }
+      .foot { position:absolute; bottom:10px; width:47px; height:25px; border-radius:55% 55% 40% 40%; background:#106e58; border:2px solid rgba(238,253,246,.8); }
+      .foot.left { left:43px; } .foot.right { right:27px; }
+      .status-dot {
+        position:absolute; right:2px; top:6px; min-width:27px; height:27px; padding:0 8px;
+        border-radius:999px; display:grid; place-items:center; color:#06271e; background:var(--accent);
+        border:2px solid white; box-shadow:0 4px 14px rgba(0,0,0,.38); font-size:12px; font-weight:850;
+        cursor:pointer;
+      }
+      .state-label {
+        position:absolute; left:33px; bottom:2px; max-width:124px; padding:5px 10px;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border-radius:999px;
+        color:var(--ink); background:rgba(7,28,23,.9); border:1px solid rgba(255,255,255,.34);
+        font-size:11px; font-weight:750; letter-spacing:.02em; pointer-events:none;
+      }
+
+      #stage[data-visual="waiting"] { --accent:#ffd166; --accent-strong:#f2b735; }
+      #stage[data-visual="stuck"] { --accent:#ff9f68; --accent-strong:#f2743f; }
+      #stage[data-visual="limited"] { --accent:#c5a3ff; --accent-strong:#9c6ee8; }
+      #stage[data-visual="error"], #stage[data-visual="disconnected"] { --accent:#ff7272; --accent-strong:#e64f4f; }
+      #stage[data-visual="celebrate"] { --accent:#81f7ff; --accent-strong:#36d9e5; }
+      #stage[data-visual="working"] .arm.right { animation-duration:1.25s; }
+      #stage[data-visual="working"] .optimus { animation:robot-working 1.7s ease-in-out infinite; }
+      #stage[data-visual="waiting"] .kaiju, #stage[data-visual="stuck"] .kaiju, #stage[data-visual="error"] .kaiju { animation-duration:1.45s; }
+      #stage[data-visual="waiting"] .optimus, #stage[data-visual="stuck"] .optimus, #stage[data-visual="error"] .optimus { animation:robot-alert 1.45s ease-in-out infinite; }
+      #stage[data-visual="celebrate"] .kaiju { animation:celebrate .75s ease-in-out infinite; }
+      #stage[data-visual="celebrate"] .optimus { animation:robot-celebrate .7s ease-in-out infinite; }
+      #stage[data-visual="waiting"] .o-eye, #stage[data-visual="stuck"] .o-eye, #stage[data-visual="error"] .o-eye { background:var(--accent); box-shadow:0 0 8px var(--accent); }
+      .pet-wrap.event-waiting .signal-ring { animation:event-ring .65s ease-out 3; }
+      .pet-wrap.event-stuck .optimus, .pet-wrap.event-stuck .kaiju { animation:event-shake .12s linear 7; }
+      .pet-wrap.event-limited .optimus, .pet-wrap.event-limited .kaiju { animation:event-limited 1.5s ease-in-out 1; }
+      .pet-wrap.event-limited .scan-line { animation:event-scan 1.35s ease-in-out 1; }
+      .pet-wrap.event-error .optimus, .pet-wrap.event-error .kaiju { animation:event-glitch .16s steps(2,end) 8; }
+      .pet-wrap.event-error .signal-ring { animation:event-error-ring .42s ease-out 3; }
+      .pet-wrap.event-celebrate .optimus, .pet-wrap.event-celebrate .kaiju { animation:event-jump .7s cubic-bezier(.2,.85,.25,1.25) 2; }
+      .pet-wrap.event-celebrate .spark { animation:event-spark 1.25s ease-out 1; }
+      .pet-wrap.event-reconnect .optimus, .pet-wrap.event-reconnect .kaiju { animation:event-wake .9s ease-out 1; }
+      .pet-wrap.event-reconnect .signal-ring { animation:event-ring .7s ease-out 2; }
+
+      .bubble {
+        position:absolute; inset:8px 8px 128px 8px; min-height:380px; display:none; overflow:hidden;
+        border:1px solid rgba(255,255,255,.25); border-radius:22px;
+        color:var(--ink); background:linear-gradient(160deg, rgba(25,41,37,.97), rgba(8,17,15,.97));
+        box-shadow:0 18px 48px rgba(0,0,0,.48); backdrop-filter:blur(18px);
+      }
+      body.expanded .bubble { display:flex; flex-direction:column; }
+      .bubble::after { content:""; position:absolute; right:72px; bottom:-13px; width:25px; height:25px; background:#091310; transform:rotate(45deg); }
+      .bubble-head { display:flex; align-items:center; gap:8px; padding:13px 14px 10px; border-bottom:1px solid rgba(255,255,255,.09); }
+      .bubble-head strong { flex:1; font-size:13px; letter-spacing:.04em; }
+      .close { width:27px; height:27px; border:0; border-radius:50%; background:rgba(255,255,255,.1); cursor:pointer; }
+      select { max-width:205px; min-width:0; border:0; outline:0; border-radius:9px; padding:6px 8px; color:var(--ink); background:#23332f; }
+      .content { min-height:0; flex:1; display:flex; flex-direction:column; gap:10px; padding:12px 14px; }
+      .task { margin:0; max-height:78px; overflow:auto; color:#d8ebe2; font-size:13px; line-height:1.42; user-select:text; -webkit-user-select:text; }
+      .meta { color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .logs { flex:1; min-height:115px; overflow:auto; margin:0; padding:10px 11px; border-radius:12px; color:#bce8d1; background:#07100e; font:11px/1.42 ui-monospace, SFMono-Regular, Menlo, monospace; white-space:pre-wrap; user-select:text; -webkit-user-select:text; }
+      .reply-row { display:flex; gap:7px; }
+      #reply { min-width:0; flex:1; border:1px solid rgba(255,255,255,.17); outline:0; border-radius:11px; padding:9px 10px; color:var(--ink); background:#15231f; user-select:text; -webkit-user-select:text; }
+      #reply:focus { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+      #send { border:0; border-radius:11px; padding:0 14px; color:#06271e; background:var(--accent); font-weight:800; cursor:pointer; }
+      #send:disabled, #reply:disabled { opacity:.45; cursor:not-allowed; }
+      .feedback { min-height:15px; color:var(--muted); font-size:11px; }
+      .feedback.error { color:#ff9999; }
+
+      .attention {
+        position:absolute; left:8px; top:10px; width:360px; min-height:92px; display:none; align-items:center; gap:12px;
+        padding:13px 15px; border:1px solid rgba(255,255,255,.28); border-radius:18px;
+        color:var(--ink); background:rgba(12,24,21,.96); box-shadow:0 15px 42px rgba(0,0,0,.45); cursor:pointer;
+      }
+      body.attention .attention { display:flex; }
+      .attention .pulse { width:14px; height:14px; flex:0 0 auto; border-radius:50%; background:var(--accent); box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); animation:pulse 1.5s infinite; }
+      .attention strong { display:block; margin-bottom:3px; font-size:13px; }
+      .attention span { display:block; max-width:290px; color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+      .menu { position:absolute; display:none; z-index:20; min-width:150px; padding:6px; border:1px solid rgba(255,255,255,.22); border-radius:11px; background:rgba(24,31,29,.98); box-shadow:0 14px 35px rgba(0,0,0,.5); }
+      .menu.open { display:block; }
+      .menu button { display:block; width:100%; padding:7px 10px; border:0; border-radius:7px; text-align:left; background:transparent; cursor:pointer; }
+      .menu button:hover { background:rgba(255,255,255,.1); }
+      .menu .danger { color:#ff9999; }
+
+      @keyframes breathe { 0%,100%{transform:translateY(1px) scaleY(1)} 50%{transform:translateY(-3px) scaleY(1.025)} }
+      @keyframes head { 0%,100%{transform:rotate(-1deg)} 50%{transform:rotate(2deg) translateY(-1px)} }
+      @keyframes tail { 0%,100%{transform:rotate(7deg)} 50%{transform:rotate(20deg)} }
+      @keyframes arm-left { 0%,100%{transform:rotate(22deg)} 50%{transform:rotate(12deg)} }
+      @keyframes arm-right { 0%,100%{transform:rotate(-22deg)} 50%{transform:rotate(-38deg)} }
+      @keyframes blink { 0%,45%,49%,100%{transform:scaleY(1)} 47%{transform:scaleY(.08)} }
+      @keyframes aura { 0%,100%{opacity:.45;transform:scale(.92)} 50%{opacity:.8;transform:scale(1.07)} }
+      @keyframes pulse { 70%{box-shadow:0 0 0 12px transparent} 100%{box-shadow:0 0 0 0 transparent} }
+      @keyframes celebrate { 0%,100%{transform:translateY(2px) rotate(-3deg)} 50%{transform:translateY(-9px) rotate(4deg)} }
+      @keyframes robot-breathe { 0%,100%{transform:translateY(1px)} 50%{transform:translateY(-3px) scale(1.015)} }
+      @keyframes robot-arm-left { 0%,100%{transform:rotate(8deg)} 50%{transform:rotate(3deg)} }
+      @keyframes robot-arm-right { 0%,100%{transform:rotate(-8deg)} 50%{transform:rotate(-20deg)} }
+      @keyframes robot-blink { 0%,46%,50%,100%{transform:scaleY(1)} 48%{transform:scaleY(.15)} }
+      @keyframes robot-celebrate { 0%,100%{transform:translateY(1px) rotate(-2deg)} 50%{transform:translateY(-9px) rotate(3deg)} }
+      @keyframes robot-working { 0%,100%{transform:translateY(1px) rotate(-.7deg)} 50%{transform:translateY(-4px) rotate(.7deg)} }
+      @keyframes robot-alert { 0%,100%{transform:translateY(0) scale(1)} 45%{transform:translateY(-4px) scale(1.025)} 55%{transform:translateY(-4px) scale(1.025)} }
+      @keyframes event-ring { 0%{opacity:.85;transform:scale(.55)} 100%{opacity:0;transform:scale(1.3)} }
+      @keyframes event-error-ring { 0%{opacity:.9;transform:scale(.7);border-color:#ff4545} 100%{opacity:0;transform:scale(1.2);border-color:#ff4545} }
+      @keyframes event-shake { 0%{transform:translateX(-4px) rotate(-2deg)} 50%{transform:translateX(4px) rotate(2deg)} 100%{transform:translateX(-3px) rotate(-1deg)} }
+      @keyframes event-limited { 0%,100%{filter:grayscale(0) brightness(1)} 45%{filter:grayscale(.72) brightness(.7);transform:scale(.96)} }
+      @keyframes event-scan { 0%{opacity:0;transform:translateY(0)} 15%{opacity:1} 85%{opacity:1} 100%{opacity:0;transform:translateY(125px)} }
+      @keyframes event-glitch { 0%{transform:translate(0);filter:none} 33%{transform:translate(-5px,2px);filter:hue-rotate(55deg)} 66%{transform:translate(5px,-2px);filter:saturate(1.8)} 100%{transform:translate(0);filter:none} }
+      @keyframes event-jump { 0%,100%{transform:translateY(0) scale(1)} 42%{transform:translateY(-16px) scale(1.04)} 62%{transform:translateY(-16px) rotate(3deg)} }
+      @keyframes event-spark { 0%{opacity:0;transform:rotate(var(--r,0deg)) translateY(0) scale(.2)} 18%{opacity:1} 100%{opacity:0;transform:rotate(var(--r,0deg)) translateY(-74px) scale(1)} }
+      @keyframes event-wake { 0%{opacity:.35;transform:scale(.72) translateY(13px)} 55%{opacity:1;transform:scale(1.08) translateY(-5px)} 100%{transform:scale(1) translateY(0)} }
+      @keyframes truck-idle { 0%,100%{transform:translateY(1px)} 50%{transform:translateY(-2px)} }
+      @keyframes truck-drive { 0%,100%{transform:translate(-2px,1px) rotate(-.7deg)} 50%{transform:translate(2px,-2px) rotate(.7deg)} }
+      @keyframes transform-pop { 0%{opacity:.2;transform:scale(.62) rotateY(70deg)} 65%{opacity:1;transform:scale(1.07) rotateY(-7deg)} 100%{transform:scale(1) rotateY(0)} }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; } }
+    </style>
+  </head>
+  <body>
+    <main id="app">
+      <section id="stage" data-visual="disconnected" data-character="optimus" data-form="robot">
+        <aside id="attention" class="attention" aria-live="polite">
+          <i class="pulse"></i><div><strong id="attention-title">Kaiju needs attention</strong><span id="attention-detail"></span></div>
+        </aside>
+
+        <article class="bubble">
+          <header class="bubble-head drag-zone">
+            <strong>KAIJU AGENT</strong>
+            <select id="agent-select" aria-label="Agent"></select>
+            <button id="close" class="close" aria-label="Collapse">×</button>
+          </header>
+          <div class="content">
+            <p id="task" class="task">No active agent.</p>
+            <div id="meta" class="meta">Waiting for daemon…</div>
+            <pre id="logs" class="logs">Recent logs will appear here.</pre>
+            <div class="reply-row">
+              <input id="reply" type="text" maxlength="4096" autocomplete="off" placeholder="Reply to this agent…" />
+              <button id="send">Send</button>
+            </div>
+            <div id="feedback" class="feedback"></div>
+          </div>
+        </article>
+
+        <div class="pet-wrap drag-zone" aria-label="Kaiju pet — drag to move">
+          <div class="event-fx"><i class="signal-ring"></i><i class="scan-line"></i><i class="spark s1" style="--r:0deg"></i><i class="spark s2" style="--r:60deg"></i><i class="spark s3" style="--r:120deg"></i><i class="spark s4" style="--r:180deg"></i><i class="spark s5" style="--r:240deg"></i><i class="spark s6" style="--r:300deg"></i></div>
+          <div class="aura"></div>
+          <div class="optimus" aria-label="Optimus Prime">
+            <div class="o-arm left"></div><div class="o-arm right"></div>
+            <div class="o-torso"><i class="o-window left"></i><i class="o-window right"></i><i class="o-grill"></i></div>
+            <div class="o-head"><i class="o-crest"></i><i class="o-ear left"></i><i class="o-ear right"></i><i class="o-eye left"></i><i class="o-eye right"></i><i class="o-mask"></i></div>
+            <div class="o-leg left"><i class="o-foot"></i></div><div class="o-leg right"><i class="o-foot"></i></div>
+          </div>
+          <div class="truck" aria-label="Optimus Prime truck form"></div>
+          <div class="kaiju">
+            <div class="tail"></div>
+            <div class="arm left"></div><div class="arm right"></div>
+            <div class="body"><div class="belly"></div></div>
+            <div class="head"><i class="horn one"></i><i class="horn two"></i><i class="eye left"></i><i class="eye right"></i><i class="mouth"></i></div>
+            <div class="foot left"></div><div class="foot right"></div>
+          </div>
+          <button id="status-dot" class="status-dot" title="Open Kaiju">!</button>
+          <div id="state-label" class="state-label">Disconnected</div>
+        </div>
+      </section>
+
+      <nav id="menu" class="menu">
+        <button id="character">Use Kaiju</button>
+        <button id="dashboard">Open dashboard</button>
+        <button id="quit" class="danger">Quit Kaiju</button>
+      </nav>
+    </main>
+
+    <script>
+      try {
+      const invoke = window.__TAURI__.core.invoke;
+      const listen = window.__TAURI__.event.listen;
+      const currentWindow = window.__TAURI__.window.getCurrentWindow();
+      const $ = (selector) => document.querySelector(selector);
+      const ui = {
+        stage: $('#stage'), pet: $('.pet-wrap'), attention: $('#attention'), attentionTitle: $('#attention-title'), attentionDetail: $('#attention-detail'),
+        select: $('#agent-select'), task: $('#task'), meta: $('#meta'), logs: $('#logs'), reply: $('#reply'), send: $('#send'),
+        feedback: $('#feedback'), status: $('#status-dot'), label: $('#state-label'), menu: $('#menu')
+      };
+      let snapshot = null;
+      let selectedId = null;
+      let mode = 'collapsed';
+      let sending = false;
+      let previousVisual = null;
+      let eventTimer = null;
+      let character = localStorage.getItem('kaiju-pet-character') || 'optimus';
+      if (!['optimus', 'kaiju'].includes(character)) character = 'optimus';
+      let form = 'robot';
+      ui.stage.dataset.character = character;
+      ui.stage.dataset.form = form;
+      $('#character').textContent = character === 'optimus' ? 'Use Kaiju' : 'Use Optimus Prime';
+
+      const labels = {
+        disconnected: 'Disconnected', idle: 'All quiet', working: 'Working', waiting: 'Needs reply',
+        stuck: 'Stuck', limited: 'Rate limited', error: 'Error', celebrate: 'Completed!'
+      };
+      const statusLabels = {
+        starting: 'Starting', running: 'Running', waitingforinput: 'Waiting for input', stuck: 'Stuck', limited: 'Limited',
+        error: 'Error', completed: 'Completed', stopped: 'Stopped', unknown: 'Unknown'
+      };
+      const isTerminal = (status) => ['completed', 'stopped', 'error'].includes(status);
+
+      function playEventAnimation(name) {
+        const classes = ['event-waiting','event-stuck','event-limited','event-error','event-celebrate','event-reconnect'];
+        ui.pet.classList.remove(...classes);
+        void ui.pet.offsetWidth;
+        const next = `event-${name}`;
+        if (!classes.includes(next)) return;
+        ui.pet.classList.add(next);
+        clearTimeout(eventTimer);
+        eventTimer = setTimeout(() => ui.pet.classList.remove(next), name === 'celebrate' ? 1600 : 1300);
+      }
+
+      function displayForm(next, animate = true) {
+        ui.stage.dataset.form = next;
+        if (!animate) return;
+        ui.pet.classList.remove('form-transition');
+        void ui.pet.offsetWidth;
+        ui.pet.classList.add('form-transition');
+        setTimeout(() => ui.pet.classList.remove('form-transition'), 430);
+      }
+
+      async function setMode(next) {
+        mode = next;
+        document.body.classList.toggle('expanded', next === 'expanded');
+        document.body.classList.toggle('attention', next === 'attention');
+        ui.menu.classList.remove('open');
+        await invoke('set_panel_mode', { mode: next });
+      }
+
+      function chooseAgent() {
+        const agents = snapshot?.agents || [];
+        if (selectedId && agents.some((agent) => agent.id === selectedId)) return;
+        selectedId = snapshot?.ordered_attention?.[0]?.id || agents[0]?.id || null;
+        ui.reply.value = '';
+      }
+
+      function renderSelect() {
+        ui.select.replaceChildren();
+        for (const agent of snapshot?.agents || []) {
+          const option = document.createElement('option');
+          option.value = agent.id;
+          option.textContent = `${agent.session_name || agent.id} · ${statusLabels[agent.status] || agent.status}`;
+          option.selected = agent.id === selectedId;
+          ui.select.append(option);
+        }
+        ui.select.disabled = !ui.select.options.length;
+      }
+
+      function selectedAgent() {
+        return (snapshot?.agents || []).find((agent) => agent.id === selectedId) || null;
+      }
+
+      function renderAgent() {
+        const agent = selectedAgent();
+        if (!agent) {
+          ui.task.textContent = snapshot?.visual === 'disconnected' ? 'Cannot reach the Kaiju daemon.' : 'No agents are running.';
+          ui.meta.textContent = snapshot?.visual === 'disconnected' ? 'Check 127.0.0.1:7800, then retry.' : 'Kaiju is all quiet.';
+          ui.logs.textContent = 'No recent logs.';
+          ui.reply.disabled = true; ui.send.disabled = true;
+          return;
+        }
+        ui.task.textContent = agent.prompt || 'No task description.';
+        ui.meta.textContent = `${statusLabels[agent.status] || agent.status} · ${agent.workspace}`;
+        const disabled = isTerminal(agent.status) || sending;
+        ui.reply.disabled = disabled;
+        ui.send.disabled = disabled;
+      }
+
+      function render(next) {
+        const previousEvents = next?.new_events || [];
+        snapshot = next;
+        ui.stage.dataset.visual = snapshot?.visual || 'disconnected';
+        chooseAgent();
+        const visual = snapshot?.visual || 'disconnected';
+        const priorVisual = previousVisual;
+        previousVisual = visual;
+        ui.stage.dataset.visual = visual;
+        ui.label.textContent = labels[visual] || visual;
+        const unread = snapshot?.unread_count || 0;
+        ui.status.textContent = unread ? String(unread) : (visual === 'disconnected' ? '×' : '•');
+        renderSelect(); renderAgent();
+
+        if (previousEvents.length) playEventAnimation(previousEvents[0].status);
+        else if (visual === 'celebrate' && priorVisual !== 'celebrate') playEventAnimation('celebrate');
+        else if (priorVisual === 'disconnected' && visual !== 'disconnected') playEventAnimation('reconnect');
+
+        if (previousEvents.length && mode !== 'expanded') {
+          const event = previousEvents[0];
+          const agentId = event.agent_id;
+          const status = event.status;
+          const agent = (snapshot.agents || []).find((item) => item.id === agentId);
+          selectedId = agentId;
+          ui.attentionTitle.textContent = `${statusLabels[status] || status}`;
+          ui.attentionDetail.textContent = agent?.prompt || agent?.session_name || agentId;
+          setMode('attention');
+        }
+      }
+
+      async function openBubble() {
+        await setMode('expanded');
+        renderSelect(); renderAgent();
+        if (selectedId) {
+          invoke('mark_read', { id: selectedId });
+          invoke('fetch_logs', { id: selectedId });
+        }
+      }
+
+      async function submitReply() {
+        if (sending || !selectedId) return;
+        const bytes = new TextEncoder().encode(ui.reply.value.trim()).length;
+        if (!bytes) return showFeedback('Reply cannot be empty', true);
+        if (bytes > 4096) return showFeedback('Reply must be at most 4 KiB', true);
+        if ([...ui.reply.value.trim()].some((char) => /[\u0000-\u001f\u007f-\u009f]/u.test(char))) return showFeedback('Reply must be a single line', true);
+        sending = true; ui.send.disabled = true; showFeedback('Sending…');
+        try {
+          await invoke('send_reply', { id: selectedId, text: ui.reply.value });
+          await invoke('end_reply');
+        } catch (error) {
+          sending = false; renderAgent(); showFeedback(String(error), true);
+        }
+      }
+
+      function showFeedback(message, error = false) {
+        ui.feedback.textContent = message;
+        ui.feedback.classList.toggle('error', error);
+      }
+
+      for (const zone of document.querySelectorAll('.drag-zone')) {
+        zone.addEventListener('mousedown', async (event) => {
+          if (event.button !== 0 || event.target.closest('button,input,select')) return;
+          if (zone.classList.contains('pet-wrap')) return;
+          event.preventDefault();
+          try { await currentWindow.startDragging(); } catch (error) { showFeedback(`Drag failed: ${error}`, true); }
+        });
+      }
+      let petGesture = null;
+      ui.pet.addEventListener('mousedown', (event) => {
+        if (event.button !== 0 || event.target.closest('button')) return;
+        petGesture = { x: event.clientX, y: event.clientY };
+      });
+      window.addEventListener('mousemove', async (event) => {
+        if (!petGesture || !(event.buttons & 1)) return;
+        if (Math.hypot(event.clientX - petGesture.x, event.clientY - petGesture.y) < 4) return;
+        petGesture = null;
+        const drive = character === 'optimus';
+        if (drive) { ui.pet.classList.add('is-driving'); displayForm('truck'); }
+        try { await currentWindow.startDragging(); }
+        catch (error) { showFeedback(`Drag failed: ${error}`, true); }
+        finally {
+          if (drive) { ui.pet.classList.remove('is-driving'); displayForm(form); }
+        }
+      });
+      window.addEventListener('mouseup', (event) => {
+        if (!petGesture || event.button !== 0) return;
+        petGesture = null;
+        if (character !== 'optimus') return;
+        form = form === 'robot' ? 'truck' : 'robot';
+        displayForm(form);
+      });
+      ui.status.addEventListener('click', openBubble);
+      ui.attention.addEventListener('click', openBubble);
+      $('#close').addEventListener('click', async () => { await invoke('end_reply').catch(() => {}); setMode('collapsed'); });
+      ui.select.addEventListener('change', () => {
+        selectedId = ui.select.value || null;
+        ui.reply.value = ''; showFeedback(''); renderAgent();
+        if (selectedId) { invoke('mark_read', { id: selectedId }); invoke('fetch_logs', { id: selectedId }); }
+      });
+      ui.reply.addEventListener('mousedown', async (event) => {
+        if (ui.reply.disabled) return;
+        event.preventDefault();
+        try { await invoke('begin_reply'); ui.reply.focus(); } catch (error) { showFeedback(String(error), true); }
+      });
+      ui.reply.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') { event.preventDefault(); submitReply(); }
+        if (event.key === 'Escape') { event.preventDefault(); ui.reply.blur(); invoke('end_reply'); }
+      });
+      ui.reply.addEventListener('blur', () => invoke('end_reply').catch(() => {}));
+      ui.send.addEventListener('click', submitReply);
+
+      document.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        const x = Math.min(event.clientX, window.innerWidth - 158);
+        const y = Math.min(event.clientY, window.innerHeight - 116);
+        ui.menu.style.left = `${Math.max(4, x)}px`; ui.menu.style.top = `${Math.max(4, y)}px`;
+        ui.menu.classList.add('open');
+      });
+      document.addEventListener('mousedown', (event) => { if (!event.target.closest('#menu')) ui.menu.classList.remove('open'); });
+      $('#dashboard').addEventListener('click', () => invoke('open_dashboard'));
+      $('#character').addEventListener('click', () => {
+        character = character === 'optimus' ? 'kaiju' : 'optimus';
+        localStorage.setItem('kaiju-pet-character', character);
+        ui.stage.dataset.character = character;
+        $('#character').textContent = character === 'optimus' ? 'Use Kaiju' : 'Use Optimus Prime';
+        ui.menu.classList.remove('open');
+      });
+      $('#quit').addEventListener('click', () => invoke('quit'));
+
+      listen('kaiju:snapshot', (event) => render(event.payload));
+      listen('kaiju:logs', (event) => {
+        if (event.payload.id !== selectedId) return;
+        ui.logs.textContent = event.payload.error || (event.payload.lines.length ? event.payload.lines.join('\n') : 'No recent logs.');
+      });
+      listen('kaiju:send-result', (event) => {
+        if (event.payload.id !== selectedId) return;
+        sending = false;
+        if (event.payload.ok) { ui.reply.value = ''; showFeedback('Sent'); }
+        else showFeedback(event.payload.error || 'Reply failed — not retried', true);
+        renderAgent();
+      });
+
+      invoke('get_snapshot').then((value) => { if (value) render(value); });
+      } catch (error) {
+        document.title = `Kaiju error: ${error?.stack || error}`;
+      }
+    </script>
+  </body>
+</html>

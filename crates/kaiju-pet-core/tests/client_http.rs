@@ -4,8 +4,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use kaiju_pet::client::Client;
-use kaiju_pet::error::PetError;
+use kaiju_pet_core::client::Client;
+use kaiju_pet_core::error::PetError;
 use std::net::SocketAddr;
 
 async fn stub_agents() -> Json<serde_json::Value> {

@@ -14,13 +14,9 @@ name = "kaiju-pet"
 path = "src/main.rs"
 
 [dependencies]
+kaiju-pet-core.workspace = true
 eframe.workspace = true
 egui.workspace = true
-reqwest = { workspace = true, features = ["blocking", "json"] }
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
-strip-ansi-escapes.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 # macOS-only: native NSWindow tweaks eframe does not expose (float over all
@@ -29,7 +25,3 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
-
-[dev-dependencies]
-axum.workspace = true
-tokio.workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "kaiju-pet-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+reqwest = { workspace = true, features = ["blocking", "json"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+strip-ansi-escapes.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+tokio.workspace = true

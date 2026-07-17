@@ -1,4 +1,5 @@
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::client::Client;
@@ -19,23 +20,26 @@ pub enum WorkerMsg {
 
 pub enum UiCmd {
     FetchLogs(String),
-    /// Mark an agent's attention event read (badge only) once it is shown in the
-    /// expanded bubble. The reducer lives on this worker thread, so read state is
-    /// applied here and reflected on the next snapshot.
     MarkRead(String),
-    SendReply {
-        id: String,
-        text: String,
-    },
+    SendReply { id: String, text: String },
     RetryNow,
     Shutdown,
 }
 
 const BACKOFF: [u64; 4] = [2, 5, 10, 30];
 
-pub fn spawn_worker(client: Client, ctx: egui::Context) -> (Sender<UiCmd>, Receiver<WorkerMsg>) {
+/// Start the daemon worker without depending on any GUI framework.
+///
+/// `wake` is called after each message is queued. eframe uses it to request a
+/// repaint; the Tauri shell uses it only as a lightweight notification because
+/// a bridge thread emits the queued messages to the webview.
+pub fn spawn_worker(
+    client: Client,
+    wake: impl Fn() + Send + Sync + 'static,
+) -> (Sender<UiCmd>, Receiver<WorkerMsg>) {
     let (cmd_tx, cmd_rx) = mpsc::channel::<UiCmd>();
     let (msg_tx, msg_rx) = mpsc::channel::<WorkerMsg>();
+    let wake = Arc::new(wake);
 
     std::thread::spawn(move || {
         let mut reducer = Reducer::new();
@@ -43,7 +47,6 @@ pub fn spawn_worker(client: Client, ctx: egui::Context) -> (Sender<UiCmd>, Recei
         let mut next_poll = Instant::now();
 
         loop {
-            // Drain UI commands (non-blocking) before deciding to poll.
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
                     UiCmd::Shutdown => return,
@@ -52,12 +55,12 @@ pub fn spawn_worker(client: Client, ctx: egui::Context) -> (Sender<UiCmd>, Recei
                     UiCmd::FetchLogs(id) => {
                         let lines = client.get_log_tail(&id, 5);
                         let _ = msg_tx.send(WorkerMsg::LogTail { id, lines });
-                        ctx.request_repaint();
+                        wake();
                     }
                     UiCmd::SendReply { id, text } => {
                         let result = client.send_input(&id, &text);
                         let _ = msg_tx.send(WorkerMsg::SendResult { id, result });
-                        ctx.request_repaint();
+                        wake();
                     }
                 }
             }
@@ -71,7 +74,6 @@ pub fn spawn_worker(client: Client, ctx: egui::Context) -> (Sender<UiCmd>, Recei
                         next_poll = Instant::now() + Duration::from_secs(2);
                     }
                     Err(PetError::Transport) => {
-                        // The daemon is unreachable: show disconnected and back off.
                         let out = reducer.on_disconnect();
                         let _ = msg_tx.send(WorkerMsg::Snapshot(out));
                         let idx = fail_streak.min(BACKOFF.len() - 1);
@@ -79,13 +81,13 @@ pub fn spawn_worker(client: Client, ctx: egui::Context) -> (Sender<UiCmd>, Recei
                         fail_streak += 1;
                     }
                     Err(_) => {
-                        // A transient 5xx or a malformed body: the daemon IS
-                        // reachable, so retain the last good snapshot (spec: "mark
-                        // data stale, and retry") rather than wiping the view.
+                        // The daemon answered, so keep the last good snapshot
+                        // and retry on the normal cadence. Replies are never
+                        // retried by this worker.
                         next_poll = Instant::now() + Duration::from_secs(2);
                     }
                 }
-                ctx.request_repaint();
+                wake();
             }
 
             std::thread::sleep(Duration::from_millis(100));

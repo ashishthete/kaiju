@@ -34,6 +34,7 @@ impl PetApp {
             prefs,
             out: ReducerOutput {
                 visual: VisualState::Idle,
+                agents: Vec::new(),
                 ordered_attention: Vec::new(),
                 new_events: Vec::new(),
                 unread_count: 0,

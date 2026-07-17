@@ -18,7 +18,8 @@ fn main() -> eframe::Result<()> {
         "Kaiju Pet",
         options,
         Box::new(move |cc| {
-            let (cmd_tx, msg_rx) = poller::spawn_worker(client, cc.egui_ctx.clone());
+            let egui_ctx = cc.egui_ctx.clone();
+            let (cmd_tx, msg_rx) = poller::spawn_worker(client, move || egui_ctx.request_repaint());
             Ok(Box::new(PetApp::new(cmd_tx, msg_rx, prefs)))
         }),
     )
