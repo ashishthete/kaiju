@@ -20,8 +20,6 @@ pub struct PetApp {
     log_lines: Vec<String>,
     // Lazily uploaded on the first frame (needs an egui Context).
     sprite: Option<egui::TextureHandle>,
-    // Native all-Spaces config runs once after the window exists.
-    configured: bool,
 }
 
 impl PetApp {
@@ -48,7 +46,6 @@ impl PetApp {
             status_line: String::new(),
             log_lines: Vec::new(),
             sprite: None,
-            configured: false,
         }
     }
 
@@ -217,11 +214,10 @@ impl eframe::App for PetApp {
     // when the window is hidden but a repaint was requested) and `ui` (painting,
     // handed a `Ui` for the root — no CentralPanel needed).
     fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // The window exists by the first frame; apply native all-Spaces behavior once.
-        if !self.configured {
-            self.configured = true;
-            crate::window::configure_all_spaces();
-        }
+        // Reapply native all-Spaces + high window level every frame — winit can
+        // reset the window's collectionBehavior/level after creation, so a
+        // one-shot call does not stick.
+        crate::window::configure_all_spaces();
         self.drain_messages();
     }
 

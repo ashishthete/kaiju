@@ -48,7 +48,7 @@ pub fn play_cue() {
 /// call once the window exists. No-op off macOS.
 #[cfg(target_os = "macos")]
 pub fn configure_all_spaces() {
-    use objc2_app_kit::{NSApplication, NSWindowCollectionBehavior};
+    use objc2_app_kit::{NSApplication, NSScreenSaverWindowLevel, NSWindowCollectionBehavior};
     use objc2_foundation::MainThreadMarker;
 
     let Some(mtm) = MainThreadMarker::new() else {
@@ -56,9 +56,13 @@ pub fn configure_all_spaces() {
     };
     let app = NSApplication::sharedApplication(mtm);
     let behavior = NSWindowCollectionBehavior::CanJoinAllSpaces
-        | NSWindowCollectionBehavior::FullScreenAuxiliary;
+        | NSWindowCollectionBehavior::FullScreenAuxiliary
+        | NSWindowCollectionBehavior::Stationary;
     for window in app.windows().iter() {
         window.setCollectionBehavior(behavior);
+        // Floating level (3) sits *below* a full-screen app's content; the
+        // screen-saver level (1000) draws above it so the pet stays visible.
+        window.setLevel(NSScreenSaverWindowLevel);
     }
 }
 
