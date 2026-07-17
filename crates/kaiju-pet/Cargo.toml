@@ -1,0 +1,27 @@
+[package]
+name = "kaiju-pet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "kaiju_pet"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kaiju-pet"
+path = "src/main.rs"
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+reqwest = { workspace = true, features = ["blocking", "json"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+strip-ansi-escapes.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+tokio.workspace = true

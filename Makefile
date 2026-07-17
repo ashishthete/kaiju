@@ -15,6 +15,7 @@ build: ## Compile the whole workspace
 
 test: ## Run all unit + integration tests
 	cargo test
+	cargo test -p kaiju-pet   # optional GUI crate, excluded from default-members
 
 fmt: ## Format the code
 	cargo fmt
@@ -24,6 +25,7 @@ fmt-check: ## Verify formatting without changing files
 
 lint: ## Run clippy, treating warnings as errors
 	cargo clippy --all-targets -- -D warnings
+	cargo clippy -p kaiju-pet --all-targets -- -D warnings   # optional GUI crate
 
 check: fmt-check lint test ## Run the full pre-commit gate
 

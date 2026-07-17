@@ -154,6 +154,9 @@ enum Commands {
         /// Task ID
         id: String,
     },
+
+    /// Launch the desktop pet companion (separate GUI process)
+    Pet,
 }
 
 #[tokio::main]
@@ -214,6 +217,20 @@ async fn main() {
         }
         Commands::Queue => client.queue().await,
         Commands::Cancel { id } => client.cancel_task(&id).await,
+        Commands::Pet => {
+            // The pet is a separate, optional GUI process. Shell out by name so
+            // the CLI never takes a GUI dependency; forward the daemon URL.
+            match std::process::Command::new("kaiju-pet")
+                .env("KAIJU_URL", &cli.url)
+                .status()
+            {
+                Ok(s) if s.success() => Ok(()),
+                Ok(_) => Err("kaiju-pet exited with an error".into()),
+                Err(_) => Err(
+                    "kaiju-pet not found on PATH — build it with `cargo build -p kaiju-pet`".into(),
+                ),
+            }
+        }
     };
 
     if let Err(e) = result {

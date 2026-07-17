@@ -291,10 +291,36 @@ Adapters implement a single trait, so adding a new CLI means writing one
 4. Clients read status/logs/diff, reply with `send`, open the live terminal, or
    attach directly to tmux.
 
+## Desktop pet (experimental, macOS)
+
+An optional floating desktop companion that reflects fleet state, surfaces
+attention events, and lets you send a one-line reply without opening the
+dashboard. It is a separate GUI process — the daemon, CLI, and dashboard build
+and run without it (it is excluded from the default workspace build).
+
+```bash
+# Build the pet explicitly (pulls in the eframe/egui GUI stack)
+cargo build -p kaiju-pet
+
+# Launch it (defaults to the daemon at http://127.0.0.1:7800)
+kaiju pet                      # via the CLI launcher, forwards --url
+./target/debug/kaiju-pet       # or run the binary directly
+```
+
+- Preferences live at `~/.config/kaiju/pet.json` (daemon URL, window position,
+  sound, reduced motion, per-status notifications). None are written into your
+  repository.
+- The pet polls `GET /agents` every 2s and replies through
+  `POST /agents/:id/input` — it adds no daemon endpoints.
+- Quitting or crashing the pet never affects the daemon or any agents.
+
+See `docs/superpowers/specs/2026-07-16-kaiju-pet-design.md` for the full design
+and the manual verification checklist.
+
 ## Testing
 
 ```bash
-make check     # fmt + clippy (-D warnings) + tests — the full gate
+make check     # fmt + clippy (-D warnings) + tests — the full gate (incl. kaiju-pet)
 cargo test     # tests only
 make smoke     # HTTP API contract against a throwaway daemon
 make e2e       # full pipeline with a fake agent (no API keys needed)
