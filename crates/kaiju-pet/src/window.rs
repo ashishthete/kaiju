@@ -55,6 +55,10 @@ pub fn configure_all_spaces() {
         return;
     };
     let app = NSApplication::sharedApplication(mtm);
+    // A regular (Dock) app's auxiliary windows will NOT show over another app's
+    // full-screen space; an accessory/agent app's windows can. This is the key
+    // ingredient that collectionBehavior + level alone were missing.
+    app.setActivationPolicy(objc2_app_kit::NSApplicationActivationPolicy::Accessory);
     let behavior = NSWindowCollectionBehavior::CanJoinAllSpaces
         | NSWindowCollectionBehavior::FullScreenAuxiliary
         | NSWindowCollectionBehavior::Stationary;
