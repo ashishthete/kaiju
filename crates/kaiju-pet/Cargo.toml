@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[lib]
+name = "kaiju_pet"
+path = "src/lib.rs"
+
 [[bin]]
 name = "kaiju-pet"
 path = "src/main.rs"
