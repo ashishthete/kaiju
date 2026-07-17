@@ -45,7 +45,11 @@ impl Client {
     pub fn send_input(&self, id: &str, text: &str) -> Result<(), PetError> {
         let url = format!("{}/agents/{}/input", self.base, id);
         let resp = self
-            .auth(self.http.post(&url).json(&serde_json::json!({ "text": text })))
+            .auth(
+                self.http
+                    .post(&url)
+                    .json(&serde_json::json!({ "text": text })),
+            )
             .send()
             .map_err(|_| PetError::Transport)?;
         if resp.status().is_success() {

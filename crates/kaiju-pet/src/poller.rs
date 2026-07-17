@@ -24,7 +24,10 @@ pub enum UiCmd {
     /// expanded bubble. The reducer lives on this worker thread, so read state is
     /// applied here and reflected on the next snapshot.
     MarkRead(String),
-    SendReply { id: String, text: String },
+    SendReply {
+        id: String,
+        text: String,
+    },
     RetryNow,
     Shutdown,
 }

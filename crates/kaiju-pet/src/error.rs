@@ -38,7 +38,10 @@ mod tests {
     fn maps_http_statuses_to_intent() {
         assert!(matches!(PetError::from_status(401), PetError::AuthRequired));
         assert!(matches!(PetError::from_status(404), PetError::AgentGone));
-        assert!(matches!(PetError::from_status(409), PetError::AgentTerminal));
+        assert!(matches!(
+            PetError::from_status(409),
+            PetError::AgentTerminal
+        ));
         assert!(matches!(PetError::from_status(500), PetError::Server(500)));
         assert!(matches!(PetError::from_status(503), PetError::Server(503)));
         assert!(matches!(PetError::from_status(418), PetError::Unknown(418)));

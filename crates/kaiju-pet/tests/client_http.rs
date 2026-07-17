@@ -52,17 +52,19 @@ async fn get_agents_decodes_snapshot() {
 #[tokio::test(flavor = "multi_thread")]
 async fn send_input_ok() {
     let base = spawn(Router::new().route("/agents/:id/input", post(stub_input))).await;
-    let res = tokio::task::spawn_blocking(move || Client::new(base, None).send_input("ag_1", "yes"))
-        .await
-        .unwrap();
+    let res =
+        tokio::task::spawn_blocking(move || Client::new(base, None).send_input("ag_1", "yes"))
+            .await
+            .unwrap();
     assert!(res.is_ok());
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn send_input_conflict_maps_to_agent_terminal() {
     let base = spawn(Router::new().route("/agents/:id/input", post(stub_input_conflict))).await;
-    let res = tokio::task::spawn_blocking(move || Client::new(base, None).send_input("ag_1", "yes"))
-        .await
-        .unwrap();
+    let res =
+        tokio::task::spawn_blocking(move || Client::new(base, None).send_input("ag_1", "yes"))
+            .await
+            .unwrap();
     assert_eq!(res.unwrap_err(), PetError::AgentTerminal);
 }
