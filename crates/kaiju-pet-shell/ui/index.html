@@ -56,6 +56,11 @@
       .optimus > * { display:none; }
       #stage[data-character="optimus"] .kaiju { display:none; }
       #stage[data-character="kaiju"] .optimus, #stage[data-character="kaiju"] .truck { display:none; }
+      .engine-pet { position:absolute; inset:-6px; display:none; }
+      #stage[data-engine="1"] .engine-pet { display:block; }
+      #stage[data-engine="1"] .kaiju,
+      #stage[data-engine="1"] .optimus,
+      #stage[data-engine="1"] .truck { display:none; }
       .truck {
         position:absolute; inset:-2px -24px -4px; display:block; transform-origin:50% 85%;
         background:url("assets/optimus-truck-v2.png") center/contain no-repeat;
@@ -276,6 +281,7 @@
             <div class="head"><i class="horn one"></i><i class="horn two"></i><i class="eye left"></i><i class="eye right"></i><i class="mouth"></i></div>
             <div class="foot left"></div><div class="foot right"></div>
           </div>
+          <div class="engine-pet" aria-hidden="true"></div>
           <button id="status-dot" class="status-dot" title="Open Kaiju">!</button>
           <div id="state-label" class="state-label">Disconnected</div>
         </div>
@@ -288,6 +294,8 @@
       </nav>
     </main>
 
+    <script src="anim.js"></script>
+    <script src="characters.js"></script>
     <script>
       try {
       const invoke = window.__TAURI__.core.invoke;
@@ -305,12 +313,44 @@
       let sending = false;
       let previousVisual = null;
       let eventTimer = null;
+      const CHARS = window.PET_CHARACTERS || [
+        { id: 'optimus', name: 'Optimus Prime', engine: false },
+        { id: 'kaiju', name: 'Kaiju', engine: false },
+      ];
+      const charById = (id) => CHARS.find((c) => c.id === id) || CHARS[0];
+      const nextCharId = (id) => CHARS[(CHARS.findIndex((c) => c.id === id) + 1) % CHARS.length].id;
+      const engine = window.PetEngine ? new window.PetEngine() : null;
+      const engineHost = $('.engine-pet');
+      let engineMounted = null;
+      const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
       let character = localStorage.getItem('kaiju-pet-character') || 'optimus';
-      if (!['optimus', 'kaiju'].includes(character)) character = 'optimus';
+      if (!CHARS.some((c) => c.id === character)) character = CHARS[0].id;
       let form = 'robot';
-      ui.stage.dataset.character = character;
       ui.stage.dataset.form = form;
-      $('#character').textContent = character === 'optimus' ? 'Use Kaiju' : 'Use Optimus Prime';
+
+      // Apply a character from the registry. Engine characters mount their rig
+      // and are driven by PetEngine; legacy ones toggle their declarative CSS.
+      function applyCharacter(id) {
+        const c = charById(id);
+        character = c.id;
+        localStorage.setItem('kaiju-pet-character', character);
+        ui.stage.dataset.character = character;
+        ui.stage.dataset.engine = c.engine ? '1' : '';
+        $('#character').textContent = 'Use ' + charById(nextCharId(character)).name;
+        if (c.engine && engine) {
+          if (engineMounted !== c.id) { engine.mount(engineHost, window.PET_DEFS[c.id]); engineMounted = c.id; }
+          engine.setReduced(reducedMotion());
+          engine.setState((snapshot && snapshot.visual) || previousVisual || 'idle');
+        }
+      }
+      // Map an agent status / visual name to an engine event burst.
+      function driveEvent(name) {
+        if (!charById(character).engine || !engine) return;
+        const map = { waitingforinput: 'waiting', stuck: 'stuck', limited: 'limited', error: 'error' };
+        engine.trigger(map[name] || name);
+      }
+      applyCharacter(character);
 
       const labels = {
         disconnected: 'Disconnected', idle: 'All quiet', working: 'Working', waiting: 'Needs reply',
@@ -402,10 +442,11 @@
         const unread = snapshot?.unread_count || 0;
         ui.status.textContent = unread ? String(unread) : (visual === 'disconnected' ? '×' : '•');
         renderSelect(); renderAgent();
+        if (charById(character).engine && engine) engine.setState(visual);
 
-        if (previousEvents.length) playEventAnimation(previousEvents[0].status);
-        else if (visual === 'celebrate' && priorVisual !== 'celebrate') playEventAnimation('celebrate');
-        else if (priorVisual === 'disconnected' && visual !== 'disconnected') playEventAnimation('reconnect');
+        if (previousEvents.length) { playEventAnimation(previousEvents[0].status); driveEvent(previousEvents[0].status); }
+        else if (visual === 'celebrate' && priorVisual !== 'celebrate') { playEventAnimation('celebrate'); driveEvent('celebrate'); }
+        else if (priorVisual === 'disconnected' && visual !== 'disconnected') { playEventAnimation('reconnect'); driveEvent('reconnect'); }
 
         if (previousEvents.length && mode !== 'expanded') {
           const event = previousEvents[0];
@@ -510,10 +551,7 @@
       document.addEventListener('mousedown', (event) => { if (!event.target.closest('#menu')) ui.menu.classList.remove('open'); });
       $('#dashboard').addEventListener('click', () => invoke('open_dashboard'));
       $('#character').addEventListener('click', () => {
-        character = character === 'optimus' ? 'kaiju' : 'optimus';
-        localStorage.setItem('kaiju-pet-character', character);
-        ui.stage.dataset.character = character;
-        $('#character').textContent = character === 'optimus' ? 'Use Kaiju' : 'Use Optimus Prime';
+        applyCharacter(nextCharId(character));
         ui.menu.classList.remove('open');
       });
       $('#quit').addEventListener('click', () => invoke('quit'));
