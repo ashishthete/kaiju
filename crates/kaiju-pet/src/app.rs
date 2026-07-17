@@ -1,5 +1,6 @@
 use eframe::egui;
 
+use crate::model::Status;
 use crate::poller::{UiCmd, WorkerMsg};
 use crate::reducer::{ReducerOutput, VisualState};
 
@@ -49,7 +50,17 @@ impl PetApp {
         while let Ok(msg) = self.msg_rx.try_recv() {
             match msg {
                 WorkerMsg::Snapshot(out) => {
-                    if !out.new_events.is_empty() && self.prefs.sound {
+                    // Per the spec's default policy the cue fires for waiting/stuck/
+                    // error transitions but NOT limited or completed. `new_events`
+                    // only ever carries attention statuses.
+                    let wants_sound = self.prefs.sound
+                        && out.new_events.iter().any(|e| {
+                            matches!(
+                                e.status,
+                                Status::WaitingForInput | Status::Stuck | Status::Error
+                            )
+                        });
+                    if wants_sound {
                         crate::window::play_cue();
                     }
                     // Keep a valid selection; default to the top attention agent.
@@ -58,7 +69,6 @@ impl PetApp {
                     }
                     self.out = out;
                 }
-                WorkerMsg::Disconnected => {}
                 WorkerMsg::LogTail { id: _, lines } => {
                     self.log_lines = lines.unwrap_or_else(|_| vec!["Context unavailable".into()]);
                 }
@@ -97,6 +107,20 @@ impl PetApp {
             self.out.unread_count
         ));
 
+        // Drop a selection that has left the attention list, then fall back to the
+        // top attention agent. Without this the bubble stays stuck on a departed
+        // agent and — since the combo only renders with >1 agent — the operator
+        // cannot re-select the last remaining one (spec: "Agent disappears:
+        // remove it from selection").
+        if let Some(sel) = &self.selected {
+            if !attention.iter().any(|a| &a.id == sel) {
+                self.selected = None;
+            }
+        }
+        if self.selected.is_none() {
+            self.selected = attention.first().map(|a| a.id.clone());
+        }
+
         if attention.len() > 1 {
             egui::ComboBox::from_label("Agent")
                 .selected_text(self.selected.clone().unwrap_or_default())
@@ -111,13 +135,16 @@ impl PetApp {
             return;
         };
         let Some(agent) = attention.iter().find(|a| a.id == sel_id).cloned() else {
-            self.status_line = "Agent no longer present".into();
             return;
         };
 
-        // Once per selection: mark the event read (badge only) and load logs.
+        // Once per selection: clear the previous reply (spec/security: reply text
+        // is cleared when switching agents, so a message typed for A can never be
+        // sent to B), mark the event read, and load logs.
         if self.shown_for.as_deref() != Some(sel_id.as_str()) {
             self.shown_for = Some(sel_id.clone());
+            self.reply_text.clear();
+            self.status_line.clear();
             self.log_lines.clear();
             self.cmd_tx.send(UiCmd::MarkRead(sel_id.clone())).ok();
             self.cmd_tx.send(UiCmd::FetchLogs(sel_id.clone())).ok();

@@ -7,7 +7,6 @@ use crate::reducer::{Reducer, ReducerOutput};
 
 pub enum WorkerMsg {
     Snapshot(ReducerOutput),
-    Disconnected,
     LogTail {
         id: String,
         lines: Result<Vec<String>, PetError>,
@@ -71,12 +70,19 @@ pub fn spawn_worker(client: Client, ctx: egui::Context) -> (Sender<UiCmd>, Recei
                         let _ = msg_tx.send(WorkerMsg::Snapshot(out));
                         next_poll = Instant::now() + Duration::from_secs(2);
                     }
-                    Err(_) => {
+                    Err(PetError::Transport) => {
+                        // The daemon is unreachable: show disconnected and back off.
                         let out = reducer.on_disconnect();
                         let _ = msg_tx.send(WorkerMsg::Snapshot(out));
                         let idx = fail_streak.min(BACKOFF.len() - 1);
                         next_poll = Instant::now() + Duration::from_secs(BACKOFF[idx]);
                         fail_streak += 1;
+                    }
+                    Err(_) => {
+                        // A transient 5xx or a malformed body: the daemon IS
+                        // reachable, so retain the last good snapshot (spec: "mark
+                        // data stale, and retry") rather than wiping the view.
+                        next_poll = Instant::now() + Duration::from_secs(2);
                     }
                 }
                 ctx.request_repaint();
