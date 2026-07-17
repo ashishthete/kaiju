@@ -23,6 +23,13 @@ thiserror.workspace = true
 strip-ansi-escapes.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
 
+# macOS-only: native NSWindow tweaks eframe does not expose (float over all
+# Spaces and over full-screen apps).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"
+
 [dev-dependencies]
 axum.workspace = true
 tokio.workspace = true

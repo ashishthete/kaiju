@@ -20,6 +20,8 @@ pub struct PetApp {
     log_lines: Vec<String>,
     // Lazily uploaded on the first frame (needs an egui Context).
     sprite: Option<egui::TextureHandle>,
+    // Native all-Spaces config runs once after the window exists.
+    configured: bool,
 }
 
 impl PetApp {
@@ -46,6 +48,7 @@ impl PetApp {
             status_line: String::new(),
             log_lines: Vec::new(),
             sprite: None,
+            configured: false,
         }
     }
 
@@ -214,6 +217,11 @@ impl eframe::App for PetApp {
     // when the window is hidden but a repaint was requested) and `ui` (painting,
     // handed a `Ui` for the root — no CentralPanel needed).
     fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // The window exists by the first frame; apply native all-Spaces behavior once.
+        if !self.configured {
+            self.configured = true;
+            crate::window::configure_all_spaces();
+        }
         self.drain_messages();
     }
 
@@ -247,9 +255,18 @@ impl eframe::App for PetApp {
             let amp = if self.out.visual.is_calm() { 3.0 } else { 6.0 };
             ui.add_space((amp + bob) as f32);
 
+            // Breathing squash/stretch on top of the bob, for a livelier idle.
+            let breathe = if self.prefs.reduced_motion {
+                0.0
+            } else {
+                (ui.input(|i| i.time) * 2.0).sin() as f32 * 3.0
+            };
             // The mascot itself is the click target (toggles the bubble) and the
             // drag handle (moves the frameless window — "place it anywhere").
-            let sized = egui::load::SizedTexture::new(sprite.id(), egui::vec2(96.0, 96.0));
+            let sized = egui::load::SizedTexture::new(
+                sprite.id(),
+                egui::vec2(96.0 + breathe, 96.0 - breathe),
+            );
             let pet = ui.add(egui::Image::new(sized).sense(egui::Sense::click_and_drag()));
             if pet.dragged() {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);

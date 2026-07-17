@@ -42,3 +42,25 @@ pub fn play_cue() {
     // Sound is supplemental; other platforms are a window-adapter follow-up.
     let _ = CUE_WAV;
 }
+
+/// Make every app window float over all Spaces and over full-screen apps — the
+/// native behavior eframe does not expose. Must run on the main thread; safe to
+/// call once the window exists. No-op off macOS.
+#[cfg(target_os = "macos")]
+pub fn configure_all_spaces() {
+    use objc2_app_kit::{NSApplication, NSWindowCollectionBehavior};
+    use objc2_foundation::MainThreadMarker;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let app = NSApplication::sharedApplication(mtm);
+    let behavior = NSWindowCollectionBehavior::CanJoinAllSpaces
+        | NSWindowCollectionBehavior::FullScreenAuxiliary;
+    for window in app.windows().iter() {
+        window.setCollectionBehavior(behavior);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn configure_all_spaces() {}
