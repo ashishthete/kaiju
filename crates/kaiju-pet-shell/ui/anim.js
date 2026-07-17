@@ -93,6 +93,9 @@
       this.prevPose = null;
       this.blendStart = 0;
       this.blendDur = 300;
+      this.moods = {};
+      this.mood = null;
+      this.moodUntil = 0;
       this.event = null;
       this.eventStart = 0;
       this.start0 = performance.now();
@@ -114,6 +117,9 @@
       }
       this.clips = def.clips || {};
       this.events = def.events || {};
+      this.moods = def.moods || {};
+      this.mood = null;
+      this.moodUntil = 0;
       this.cur = "idle";
       this.curClip = this.clips.idle || Object.values(this.clips)[0] || { duration: 2000, tracks: {} };
       this.prevPose = null;
@@ -123,15 +129,36 @@
 
     setReduced(r) { this.reduced = !!r; }
 
-    // Switch the looping action, cross-fading from the current pose.
-    setState(name) {
-      if (name === this.cur) return;
-      const clip = this.clips[name] || this.clips.idle;
-      if (!clip) return;
+    // Cross-fade the active clip from the current pose.
+    _switch(clip) {
+      if (!clip || clip === this.curClip) return;
       this.prevPose = this.lastPose || samplePose(this.curClip, 0);
       this.curClip = clip;
-      this.cur = name;
       this.blendStart = performance.now();
+    }
+
+    // Switch the looping action (fleet state). A mood, if active, overrides it.
+    setState(name) {
+      this.cur = name;
+      if (this.mood) return;
+      this._switch(this.clips[name] || this.clips.idle);
+    }
+
+    // A temporary mood clip (angry, dragging) overriding state for `ms` ms
+    // (0 = until clearMood()).
+    setMood(name, ms) {
+      const clip = this.moods[name];
+      if (!clip) return;
+      this.mood = name;
+      this.moodUntil = ms ? performance.now() + ms : 0;
+      this._switch(clip);
+    }
+
+    clearMood() {
+      if (!this.mood) return;
+      this.mood = null;
+      this.moodUntil = 0;
+      this._switch(this.clips[this.cur] || this.clips.idle);
     }
 
     // Fire a one-shot additive burst (waiting/stuck/error/celebrate/reconnect).
@@ -148,6 +175,7 @@
 
     frame(now) {
       if (!this.curClip || !this.root) return;
+      if (this.mood && this.moodUntil && now > this.moodUntil) this.clearMood();
       const clip = this.curClip;
       const phase = this.reduced ? 0 : (((now - this.start0) / (clip.duration || 2000)) % 1);
       let pose = samplePose(clip, phase);

@@ -507,11 +507,14 @@
         if (Math.hypot(event.clientX - petGesture.x, event.clientY - petGesture.y) < 4) return;
         petGesture = null;
         const drive = character === 'optimus';
+        const eng = charById(character).engine && engine;
         if (drive) { ui.pet.classList.add('is-driving'); displayForm('truck'); }
+        if (eng) engine.setMood('dragging', 0);
         try { await currentWindow.startDragging(); }
         catch (error) { showFeedback(`Drag failed: ${error}`, true); }
         finally {
           if (drive) { ui.pet.classList.remove('is-driving'); displayForm(form); }
+          if (eng) engine.clearMood();
         }
       });
       window.addEventListener('mouseup', (event) => {
@@ -520,6 +523,23 @@
         if (character !== 'optimus') return;
         form = form === 'robot' ? 'truck' : 'robot';
         displayForm(form);
+      });
+      // Interaction reactions for engine characters: hover perks, a click pokes,
+      // double-click spins, and rapid clicking makes it angry.
+      const engineActive = () => charById(character).engine && engine;
+      ui.pet.addEventListener('mouseenter', () => { if (engineActive()) engine.trigger('hover'); });
+      ui.pet.addEventListener('dblclick', (event) => {
+        if (event.target.closest('button')) return;
+        if (engineActive()) engine.trigger('spin');
+      });
+      let clickBurst = [];
+      ui.pet.addEventListener('click', (event) => {
+        if (event.target.closest('button') || !engineActive()) return;
+        const now = performance.now();
+        clickBurst = clickBurst.filter((t) => now - t < 1500);
+        clickBurst.push(now);
+        if (clickBurst.length >= 4) { clickBurst = []; engine.setMood('angry', 2600); }
+        else engine.trigger('poke');
       });
       ui.status.addEventListener('click', openBubble);
       ui.attention.addEventListener('click', openBubble);
