@@ -207,30 +207,34 @@ impl eframe::App for PetApp {
         [0.0, 0.0, 0.0, 0.0] // transparent
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    // eframe 0.35 splits the old `update` into `logic` (non-UI state, still runs
+    // when the window is hidden but a repaint was requested) and `ui` (painting,
+    // handed a `Ui` for the root — no CentralPanel needed).
+    fn logic(&mut self, _ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain_messages();
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let badge = if self.out.unread_count > 0 {
-                format!("  ({})", self.out.unread_count)
-            } else {
-                String::new()
-            };
-            let pet = ui.button(format!("🤖 {}{}", Self::label_for(self.out.visual), badge));
-            if pet.clicked() {
-                self.expanded = !self.expanded;
-                if !self.expanded {
-                    // Re-open should re-fetch logs and re-mark the selection.
-                    self.shown_for = None;
-                }
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let badge = if self.out.unread_count > 0 {
+            format!("  ({})", self.out.unread_count)
+        } else {
+            String::new()
+        };
+        let pet = ui.button(format!("🤖 {}{}", Self::label_for(self.out.visual), badge));
+        if pet.clicked() {
+            self.expanded = !self.expanded;
+            if !self.expanded {
+                // Re-open should re-fetch logs and re-mark the selection.
+                self.shown_for = None;
             }
-            if self.expanded {
-                self.draw_bubble(ui);
-                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                    self.expanded = false;
-                    self.shown_for = None;
-                }
+        }
+        if self.expanded {
+            self.draw_bubble(ui);
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                self.expanded = false;
+                self.shown_for = None;
             }
-        });
+        }
     }
 }
 
