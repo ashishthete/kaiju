@@ -426,12 +426,18 @@ They must be bundled at compile time so the companion works offline.
 - Polling may surface an event up to roughly four seconds after the underlying
   terminal change (daemon detection plus pet polling). This is acceptable for
   quick human replies.
-- The intended mascot is an **owl** — a quiet, perched sentinel whose natural
-  vocabulary (head swivel toward you, wide-eyed alert, ruffled feathers, a single
-  wing-flap on completion) maps directly onto the visual-states table. A dog was
-  considered and remains a fallback. The initial art style and animation set still
-  require a separate visual-design pass; behavior and accessibility do not depend on
-  the chosen mascot.
+- The chosen mascot is a **terminal-faced chibi character** (see reference art,
+  2026-07-17): a small, soft-rounded pixel-art body in cornflower blue, whose head
+  is a dark terminal screen showing a cyan shell prompt `>` with a `_` cursor as its
+  "face", plus a matching `>_` on its belly. The terminal face is the expressive
+  surface: the cursor blink rate and prompt color carry state (calm slow blink when
+  idle, steady when working, amber/red tint on attention/error). This replaces the
+  earlier owl/dog idea. The reference also fixes the collapsed+bubble layout: the
+  character floats in a screen corner with a small chevron button to collapse, and
+  the interaction surface is a dark rounded card showing the agent's task title
+  (bold), a state line (e.g. "Thinking"), and a right-aligned spinner while active.
+  The full art style and animation frames still need a visual-design pass; behavior
+  and accessibility do not depend on the mascot.
 - A future daemon event stream could reduce latency, but is not justified for
   MVP.
 - Quick action buttons such as **Approve**, **Continue**, or **Interrupt** should
