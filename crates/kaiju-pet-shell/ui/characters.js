@@ -232,11 +232,19 @@
     },
   };
 
-  // Ordered registry the menu cycles through. engine:true → animated by PetEngine.
+  // Ordered registry the menu cycles through.
+  //   engine:true → data-defined rig animated by PetEngine (anim.js).
+  //   lottie:true → single-loop Lottie character animated by LottiePet (lottie-pet.js).
+  //   otherwise   → legacy declarative CSS (optimus/kaiju) in index.html.
   window.PET_CHARACTERS = [
+    { id: "blob", name: "Blob", lottie: true },
     { id: "titan", name: "Titan (mech)", engine: true },
     { id: "optimus", name: "Optimus Prime", engine: false },
     { id: "kaiju", name: "Kaiju (classic)", engine: false },
   ];
   window.PET_DEFS = { titan };
+  // Lottie characters: def = { anim: <lottie json> }. blob art loaded by blob-anim.js.
+  window.PET_LOTTIE = {
+    blob: { anim: (window.KAIJU_LOTTIE || {}).blob },
+  };
 })();

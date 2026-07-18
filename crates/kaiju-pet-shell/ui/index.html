@@ -61,6 +61,30 @@
       #stage[data-engine="1"] .kaiju,
       #stage[data-engine="1"] .optimus,
       #stage[data-engine="1"] .truck { display:none; }
+      .lottie-pet { position:absolute; inset:-6px; display:none; transform-origin:50% 88%; transition:filter .35s ease; }
+      .lottie-pet svg { display:block; }
+      #stage[data-lottie="1"] .lottie-pet { display:block; }
+      #stage[data-lottie="1"] .kaiju,
+      #stage[data-lottie="1"] .optimus,
+      #stage[data-lottie="1"] .truck,
+      #stage[data-lottie="1"] .engine-pet,
+      #stage[data-lottie="1"] .aura { display:none; }
+      /* persistent state tint */
+      .lottie-pet[data-tint="dim"] { filter:saturate(.6) brightness(.82); }
+      .lottie-pet[data-tint="off"] { filter:grayscale(1) brightness(.7) opacity(.62); }
+      .lottie-pet[data-tint="bad"] { filter:brightness(1.04) drop-shadow(0 0 7px #ff4d4d); }
+      /* one-shot reactions */
+      .lottie-pet.lp-hop { animation:lp-hop .46s ease-out 1; }
+      .lottie-pet.lp-jump { animation:lp-jump .8s cubic-bezier(.2,.85,.25,1.25) 1; }
+      .lottie-pet.lp-pop { animation:lp-pop .78s ease-out 1; }
+      .lottie-pet.lp-squash { animation:lp-squash .42s ease-out 1; }
+      .lottie-pet.lp-spin { animation:lp-spin .76s cubic-bezier(.3,.1,.2,1) 1; }
+      .lottie-pet.lp-nod { animation:lp-nod .64s ease-in-out 1; }
+      .lottie-pet.lp-shake { animation:lp-shake .1s linear 6; }
+      .lottie-pet.lp-dim { animation:lp-dim .9s ease-in-out 1; }
+      /* persistent moods */
+      .lottie-pet.lp-angry { animation:lp-shake .09s linear infinite; filter:saturate(1.35) drop-shadow(0 0 6px #ff5a5a); }
+      .lottie-pet.lp-drag { animation:lp-wobble 1s ease-in-out infinite; }
       .truck {
         position:absolute; inset:-2px -24px -4px; display:block; transform-origin:50% 85%;
         background:url("assets/optimus-truck-v2.png") center/contain no-repeat;
@@ -236,6 +260,15 @@
       @keyframes truck-idle { 0%,100%{transform:translateY(1px)} 50%{transform:translateY(-2px)} }
       @keyframes truck-drive { 0%,100%{transform:translate(-2px,1px) rotate(-.7deg)} 50%{transform:translate(2px,-2px) rotate(.7deg)} }
       @keyframes transform-pop { 0%{opacity:.2;transform:scale(.62) rotateY(70deg)} 65%{opacity:1;transform:scale(1.07) rotateY(-7deg)} 100%{transform:scale(1) rotateY(0)} }
+      @keyframes lp-hop { 0%,100%{transform:translateY(0)} 40%{transform:translateY(-12px) scaleY(1.04)} }
+      @keyframes lp-jump { 0%,100%{transform:translateY(0) scale(1)} 42%{transform:translateY(-22px) scale(1.05)} 60%{transform:translateY(-22px) rotate(4deg)} }
+      @keyframes lp-pop { 0%{opacity:.5;transform:scale(.72) translateY(10px)} 55%{opacity:1;transform:scale(1.09) translateY(-4px)} 100%{transform:scale(1) translateY(0)} }
+      @keyframes lp-squash { 0%,100%{transform:translateY(0) scale(1,1)} 30%{transform:translateY(4px) scale(1.12,.86)} 60%{transform:translateY(-3px) scale(.94,1.08)} }
+      @keyframes lp-spin { 0%{transform:rotate(0) scale(1)} 15%{transform:rotate(-22deg) scale(.96)} 100%{transform:rotate(360deg) scale(1)} }
+      @keyframes lp-nod { 0%,100%{transform:rotate(0)} 35%{transform:rotate(7deg) translateY(-2px)} 70%{transform:rotate(-3deg)} }
+      @keyframes lp-shake { 0%{transform:translateX(-4px) rotate(-2deg)} 50%{transform:translateX(4px) rotate(2deg)} 100%{transform:translateX(-3px)} }
+      @keyframes lp-dim { 0%,100%{filter:none} 50%{filter:saturate(.5) brightness(.75)} }
+      @keyframes lp-wobble { 0%,100%{transform:rotate(-6deg)} 50%{transform:rotate(6deg)} }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; } }
     </style>
   </head>
@@ -282,6 +315,7 @@
             <div class="foot left"></div><div class="foot right"></div>
           </div>
           <div class="engine-pet" aria-hidden="true"></div>
+          <div class="lottie-pet" aria-hidden="true"></div>
           <button id="status-dot" class="status-dot" title="Open Kaiju">!</button>
           <div id="state-label" class="state-label">Disconnected</div>
         </div>
@@ -294,7 +328,10 @@
       </nav>
     </main>
 
+    <script src="vendor/lottie.min.js"></script>
+    <script src="blob-anim.js"></script>
     <script src="anim.js"></script>
+    <script src="lottie-pet.js"></script>
     <script src="characters.js"></script>
     <script>
       try {
@@ -322,9 +359,24 @@
       const engine = window.PetEngine ? new window.PetEngine() : null;
       const engineHost = $('.engine-pet');
       let engineMounted = null;
+      const lottiePet = window.LottiePet ? new window.LottiePet() : null;
+      const lottieHost = $('.lottie-pet');
+      let lottieMounted = null;
       const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      let character = localStorage.getItem('kaiju-pet-character') || 'optimus';
+      // The active animation controller for a character: PetEngine, LottiePet, or
+      // null for legacy CSS pets. Both controllers share the same interface
+      // (mount/setReduced/setState/trigger/setMood/clearMood) so callers are uniform.
+      function controller(id = character) {
+        const c = charById(id);
+        if (c.engine) return engine;
+        if (c.lottie) return lottiePet;
+        return null;
+      }
+
+      // v2 key: resets the stored pick once so the new default (blob) shows;
+      // future selections still persist.
+      let character = localStorage.getItem('kaiju-pet-character-v2') || CHARS[0].id;
       if (!CHARS.some((c) => c.id === character)) character = CHARS[0].id;
       let form = 'robot';
       ui.stage.dataset.form = form;
@@ -334,21 +386,24 @@
       function applyCharacter(id) {
         const c = charById(id);
         character = c.id;
-        localStorage.setItem('kaiju-pet-character', character);
+        localStorage.setItem('kaiju-pet-character-v2', character);
         ui.stage.dataset.character = character;
         ui.stage.dataset.engine = c.engine ? '1' : '';
+        ui.stage.dataset.lottie = c.lottie ? '1' : '';
         $('#character').textContent = 'Use ' + charById(nextCharId(character)).name;
-        if (c.engine && engine) {
-          if (engineMounted !== c.id) { engine.mount(engineHost, window.PET_DEFS[c.id]); engineMounted = c.id; }
-          engine.setReduced(reducedMotion());
-          engine.setState((snapshot && snapshot.visual) || previousVisual || 'idle');
-        }
+        const ctrl = controller(c.id);
+        if (!ctrl) return;
+        if (c.engine && engineMounted !== c.id) { engine.mount(engineHost, window.PET_DEFS[c.id]); engineMounted = c.id; }
+        if (c.lottie && lottieMounted !== c.id) { lottiePet.mount(lottieHost, window.PET_LOTTIE[c.id]); lottieMounted = c.id; }
+        ctrl.setReduced(reducedMotion());
+        ctrl.setState((snapshot && snapshot.visual) || previousVisual || 'idle');
       }
-      // Map an agent status / visual name to an engine event burst.
+      // Map an agent status / visual name to a controller event burst.
       function driveEvent(name) {
-        if (!charById(character).engine || !engine) return;
+        const ctrl = controller();
+        if (!ctrl) return;
         const map = { waitingforinput: 'waiting', stuck: 'stuck', limited: 'limited', error: 'error' };
-        engine.trigger(map[name] || name);
+        ctrl.trigger(map[name] || name);
       }
       applyCharacter(character);
 
@@ -442,7 +497,7 @@
         const unread = snapshot?.unread_count || 0;
         ui.status.textContent = unread ? String(unread) : (visual === 'disconnected' ? '×' : '•');
         renderSelect(); renderAgent();
-        if (charById(character).engine && engine) engine.setState(visual);
+        { const ctrl = controller(); if (ctrl) ctrl.setState(visual); }
 
         if (previousEvents.length) { playEventAnimation(previousEvents[0].status); driveEvent(previousEvents[0].status); }
         else if (visual === 'celebrate' && priorVisual !== 'celebrate') { playEventAnimation('celebrate'); driveEvent('celebrate'); }
@@ -507,14 +562,14 @@
         if (Math.hypot(event.clientX - petGesture.x, event.clientY - petGesture.y) < 4) return;
         petGesture = null;
         const drive = character === 'optimus';
-        const eng = charById(character).engine && engine;
+        const ctrl = controller();
         if (drive) { ui.pet.classList.add('is-driving'); displayForm('truck'); }
-        if (eng) engine.setMood('dragging', 0);
+        if (ctrl) ctrl.setMood('dragging', 0);
         try { await currentWindow.startDragging(); }
         catch (error) { showFeedback(`Drag failed: ${error}`, true); }
         finally {
           if (drive) { ui.pet.classList.remove('is-driving'); displayForm(form); }
-          if (eng) engine.clearMood();
+          if (ctrl) ctrl.clearMood();
         }
       });
       window.addEventListener('mouseup', (event) => {
@@ -526,20 +581,20 @@
       });
       // Interaction reactions for engine characters: hover perks, a click pokes,
       // double-click spins, and rapid clicking makes it angry.
-      const engineActive = () => charById(character).engine && engine;
-      ui.pet.addEventListener('mouseenter', () => { if (engineActive()) engine.trigger('hover'); });
+      ui.pet.addEventListener('mouseenter', () => { const c = controller(); if (c) c.trigger('hover'); });
       ui.pet.addEventListener('dblclick', (event) => {
         if (event.target.closest('button')) return;
-        if (engineActive()) engine.trigger('spin');
+        const c = controller(); if (c) c.trigger('spin');
       });
       let clickBurst = [];
       ui.pet.addEventListener('click', (event) => {
-        if (event.target.closest('button') || !engineActive()) return;
+        const c = controller();
+        if (event.target.closest('button') || !c) return;
         const now = performance.now();
         clickBurst = clickBurst.filter((t) => now - t < 1500);
         clickBurst.push(now);
-        if (clickBurst.length >= 4) { clickBurst = []; engine.setMood('angry', 2600); }
-        else engine.trigger('poke');
+        if (clickBurst.length >= 4) { clickBurst = []; c.setMood('angry', 2600); }
+        else c.trigger('poke');
       });
       ui.status.addEventListener('click', openBubble);
       ui.attention.addEventListener('click', openBubble);
