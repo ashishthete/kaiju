@@ -45,7 +45,7 @@
         inset: 28px 17px 12px;
         border-radius: 50%;
         background: radial-gradient(circle, color-mix(in srgb, var(--accent) 34%, transparent), transparent 70%);
-        animation: aura 3.4s ease-in-out infinite;
+        animation: aura 5.5s ease-in-out infinite;
       }
       .kaiju { position: absolute; inset: 0; transform-origin: 50% 85%; animation: breathe 3.2s ease-in-out infinite; }
       .optimus {
@@ -56,9 +56,9 @@
       .optimus > * { display:none; }
       
       /* Advanced Procedural Animations for Optimus reacting to actual events */
-      #stage[data-visual="working"] .optimus { animation: optimus-run 0.6s ease-in-out infinite; }
-      #stage[data-visual="waiting"] .optimus { animation: optimus-walk 1.5s ease-in-out infinite; }
-      #stage[data-visual="celebrate"] .optimus { animation: optimus-fly 2s ease-in-out infinite; }
+      #stage[data-visual="working"] .optimus { animation: optimus-run 1.6s ease-in-out infinite; }
+      #stage[data-visual="waiting"] .optimus { animation: optimus-walk 3s ease-in-out infinite; }
+      #stage[data-visual="celebrate"] .optimus { animation: optimus-fly 3.4s ease-in-out infinite; }
       
       .optimus::after {
         content: ""; position: absolute; bottom: 5px; left: 50%; width: 34px; height: 50px;
@@ -68,16 +68,19 @@
       }
       #stage[data-visual="celebrate"] .optimus::after { opacity: 1; animation: optimus-thruster 0.1s infinite alternate; }
 
-      /* When stuck or in error, he glows red (angry mood) */
+      /* When stuck or in error, he glows red (angry mood) — held still, no buzzing. */
       #stage[data-visual="stuck"] .optimus, #stage[data-visual="error"] .optimus,
       .pet-wrap.event-stuck .optimus, .pet-wrap.event-error .optimus {
         filter: drop-shadow(0 15px 30px rgba(255, 50, 50, 0.7)) hue-rotate(-130deg) saturate(2.5) contrast(1.1);
-        animation: event-shake 0.12s linear infinite;
+      }
+      /* A brief, gentle shake only as the event first lands, then it settles. */
+      .pet-wrap.event-stuck .optimus, .pet-wrap.event-error .optimus {
+        animation: event-shake 0.18s ease-in-out 3;
       }
 
-      @keyframes optimus-walk { 0%, 50%, 100% { transform: translateY(0) rotate(0deg); } 25% { transform: translateY(-8px) rotate(4deg); } 75% { transform: translateY(-8px) rotate(-4deg); } }
-      @keyframes optimus-run { 0%, 50%, 100% { transform: translateY(-5px) rotate(14deg); } 25%, 75% { transform: translateY(-18px) rotate(14deg); } }
-      @keyframes optimus-fly { 0%, 100% { transform: translateY(-25px) rotate(6deg); } 50% { transform: translateY(-40px) rotate(6deg); } }
+      @keyframes optimus-walk { 0%, 50%, 100% { transform: translateY(0) rotate(0deg); } 25% { transform: translateY(-4px) rotate(2deg); } 75% { transform: translateY(-4px) rotate(-2deg); } }
+      @keyframes optimus-run { 0%, 50%, 100% { transform: translateY(-2px) rotate(4deg); } 25%, 75% { transform: translateY(-7px) rotate(4deg); } }
+      @keyframes optimus-fly { 0%, 100% { transform: translateY(-14px) rotate(3deg); } 50% { transform: translateY(-22px) rotate(3deg); } }
       @keyframes optimus-thruster { 0% { opacity: 0.8; transform: translateX(-50%) scaleY(0.9); } 100% { opacity: 1; transform: translateX(-50%) scaleY(1.3); } }
 
       #stage[data-character="optimus"] .kaiju { display:none; }
@@ -144,7 +147,7 @@
       .o-grill { position:absolute; left:33px; bottom:7px; width:25px; height:17px; border-radius:3px; background:repeating-linear-gradient(0deg,#84949b 0 2px,#dce5e9 2px 4px); }
       .o-arm { position:absolute; z-index:2; top:53px; width:29px; height:73px; border-radius:8px; background:linear-gradient(#e43a3c 0 45%,#245eb4 46% 100%); border:2px solid #cce2ed; transform-origin:50% 8%; }
       .o-arm.left { left:5px; transform:rotate(8deg); animation:robot-arm-left 2.8s ease-in-out infinite; }
-      .o-arm.right { right:5px; transform:rotate(-8deg); animation:robot-arm-right 1.5s ease-in-out infinite; }
+      .o-arm.right { right:5px; transform:rotate(-8deg); animation:robot-arm-right 3s ease-in-out infinite; }
       .o-leg { position:absolute; z-index:2; top:112px; width:37px; height:41px; background:linear-gradient(90deg,#174893,#3379d5,#153b7d); border:2px solid #bbd7e8; border-radius:5px 5px 10px 10px; }
       .o-leg.left { left:34px; } .o-leg.right { right:34px; }
       .o-foot { position:absolute; left:-7px; bottom:-4px; width:47px; height:16px; border-radius:4px 9px 6px 6px; background:#163d7c; border:2px solid #b9d3e2; }
@@ -271,16 +274,16 @@
 
       @keyframes breathe { 0%,100%{transform:translateY(1px) scaleY(1)} 50%{transform:translateY(-3px) scaleY(1.025)} }
       @keyframes head { 0%,100%{transform:rotate(-1deg)} 50%{transform:rotate(2deg) translateY(-1px)} }
-      @keyframes tail { 0%,100%{transform:rotate(7deg)} 50%{transform:rotate(20deg)} }
-      @keyframes arm-left { 0%,100%{transform:rotate(22deg)} 50%{transform:rotate(12deg)} }
-      @keyframes arm-right { 0%,100%{transform:rotate(-22deg)} 50%{transform:rotate(-38deg)} }
+      @keyframes tail { 0%,100%{transform:rotate(8deg)} 50%{transform:rotate(13deg)} }
+      @keyframes arm-left { 0%,100%{transform:rotate(20deg)} 50%{transform:rotate(16deg)} }
+      @keyframes arm-right { 0%,100%{transform:rotate(-22deg)} 50%{transform:rotate(-29deg)} }
       @keyframes blink { 0%,45%,49%,100%{transform:scaleY(1)} 47%{transform:scaleY(.08)} }
-      @keyframes aura { 0%,100%{opacity:.45;transform:scale(.92)} 50%{opacity:.8;transform:scale(1.07)} }
+      @keyframes aura { 0%,100%{opacity:.5;transform:scale(.96)} 50%{opacity:.7;transform:scale(1.03)} }
       @keyframes pulse { 70%{box-shadow:0 0 0 12px transparent} 100%{box-shadow:0 0 0 0 transparent} }
       @keyframes celebrate { 0%,100%{transform:translateY(2px) rotate(-3deg)} 50%{transform:translateY(-9px) rotate(4deg)} }
       @keyframes robot-breathe { 0%,100%{transform:translateY(1px)} 50%{transform:translateY(-3px) scale(1.015)} }
-      @keyframes robot-arm-left { 0%,100%{transform:rotate(8deg)} 50%{transform:rotate(3deg)} }
-      @keyframes robot-arm-right { 0%,100%{transform:rotate(-8deg)} 50%{transform:rotate(-20deg)} }
+      @keyframes robot-arm-left { 0%,100%{transform:rotate(8deg)} 50%{transform:rotate(5deg)} }
+      @keyframes robot-arm-right { 0%,100%{transform:rotate(-8deg)} 50%{transform:rotate(-14deg)} }
       @keyframes robot-blink { 0%,46%,50%,100%{transform:scaleY(1)} 48%{transform:scaleY(.15)} }
       @keyframes robot-celebrate { 0%,100%{transform:translateY(1px) rotate(-2deg)} 50%{transform:translateY(-9px) rotate(3deg)} }
       @keyframes robot-working { 0%,100%{transform:translateY(1px) rotate(-.7deg)} 50%{transform:translateY(-4px) rotate(.7deg)} }
