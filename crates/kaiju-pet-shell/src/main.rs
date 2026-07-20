@@ -360,7 +360,22 @@ mod macos {
         Ok(())
     }
 
+    // A passive pet is a singleton. Hold a fixed loopback port for the whole
+    // process lifetime: a second launch fails to bind and bows out, so the
+    // dashboard button (or `cargo run`) can never stack windows. The OS frees
+    // the port on exit or crash, so there is no stale lock file to clean up.
+    const SINGLETON_PORT: u16 = 52789;
+
+    fn acquire_single_instance() -> Option<std::net::TcpListener> {
+        std::net::TcpListener::bind(("127.0.0.1", SINGLETON_PORT)).ok()
+    }
+
     pub fn run() {
+        let Some(_singleton) = acquire_single_instance() else {
+            eprintln!("KAIJU_PET already running (port {SINGLETON_PORT} held); exiting.");
+            return;
+        };
+
         tauri::Builder::default()
             .plugin(tauri_nspanel::init())
             .invoke_handler(tauri::generate_handler![
