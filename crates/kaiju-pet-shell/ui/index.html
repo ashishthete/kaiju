@@ -32,6 +32,7 @@
         width: 174px;
         height: 174px;
         filter: drop-shadow(0 12px 11px rgba(0,0,0,.36));
+        transition: transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
       }
       .event-fx { position:absolute; inset:-10px; z-index:-1; pointer-events:none; overflow:visible; }
       .signal-ring { position:absolute; inset:27px; border:3px solid var(--accent); border-radius:50%; opacity:0; }
@@ -51,9 +52,33 @@
         position:absolute; inset:-10px -18px -6px; display:block; transform-origin:50% 88%;
         background:url("assets/optimus-prime-v2.png") center/contain no-repeat;
         filter:drop-shadow(0 10px 8px rgba(0,0,0,.42));
-        animation:robot-breathe 2.8s ease-in-out infinite;
-      }
       .optimus > * { display:none; }
+      
+      /* Advanced Procedural Animations for Optimus reacting to actual events */
+      #stage[data-visual="working"] .optimus { animation: optimus-run 0.6s ease-in-out infinite; }
+      #stage[data-visual="waiting"] .optimus { animation: optimus-walk 1.5s ease-in-out infinite; }
+      #stage[data-visual="celebrate"] .optimus { animation: optimus-fly 2s ease-in-out infinite; }
+      
+      .optimus::after {
+        content: ""; position: absolute; bottom: 5px; left: 50%; width: 34px; height: 50px;
+        background: linear-gradient(to bottom, #fff, #63b3ed, #2b6cb0, transparent);
+        border-radius: 50% 50% 20% 20%; transform: translateX(-50%); z-index: -1;
+        opacity: 0; transition: opacity 0.3s ease; mix-blend-mode: screen; pointer-events: none;
+      }
+      #stage[data-visual="celebrate"] .optimus::after { opacity: 1; animation: optimus-thruster 0.1s infinite alternate; }
+
+      /* When stuck or in error, he glows red (angry mood) */
+      #stage[data-visual="stuck"] .optimus, #stage[data-visual="error"] .optimus,
+      .pet-wrap.event-stuck .optimus, .pet-wrap.event-error .optimus {
+        filter: drop-shadow(0 15px 30px rgba(255, 50, 50, 0.7)) hue-rotate(-130deg) saturate(2.5) contrast(1.1);
+        animation: event-shake 0.12s linear infinite;
+      }
+
+      @keyframes optimus-walk { 0%, 50%, 100% { transform: translateY(0) rotate(0deg); } 25% { transform: translateY(-8px) rotate(4deg); } 75% { transform: translateY(-8px) rotate(-4deg); } }
+      @keyframes optimus-run { 0%, 50%, 100% { transform: translateY(-5px) rotate(14deg); } 25%, 75% { transform: translateY(-18px) rotate(14deg); } }
+      @keyframes optimus-fly { 0%, 100% { transform: translateY(-25px) rotate(6deg); } 50% { transform: translateY(-40px) rotate(6deg); } }
+      @keyframes optimus-thruster { 0% { opacity: 0.8; transform: translateX(-50%) scaleY(0.9); } 100% { opacity: 1; transform: translateX(-50%) scaleY(1.3); } }
+
       #stage[data-character="optimus"] .kaiju { display:none; }
       #stage[data-character="kaiju"] .optimus, #stage[data-character="kaiju"] .truck { display:none; }
       .engine-pet { position:absolute; inset:-6px; display:none; }
@@ -61,6 +86,29 @@
       #stage[data-engine="1"] .kaiju,
       #stage[data-engine="1"] .optimus,
       #stage[data-engine="1"] .truck { display:none; }
+      .lottie-pet, .rive-pet { position:absolute; inset:-6px; display:none; transform-origin:50% 88%; }
+      .lottie-pet { transition:filter .35s ease; }
+      .lottie-pet svg, .rive-pet canvas { display:block; width:100%; height:100%; }
+      #stage[data-lottie="1"] .lottie-pet,
+      #stage[data-rive="1"] .rive-pet { display:block; }
+      #stage[data-lottie="1"] .kaiju, #stage[data-lottie="1"] .optimus, #stage[data-lottie="1"] .truck, #stage[data-lottie="1"] .engine-pet, #stage[data-lottie="1"] .aura,
+      #stage[data-rive="1"] .kaiju, #stage[data-rive="1"] .optimus, #stage[data-rive="1"] .truck, #stage[data-rive="1"] .engine-pet, #stage[data-rive="1"] .aura { display:none; }
+      /* persistent state tint (lottie only; the rive robocat conveys state via faces) */
+      .lottie-pet[data-tint="dim"] { filter:saturate(.6) brightness(.82); }
+      .lottie-pet[data-tint="off"] { filter:grayscale(1) brightness(.7) opacity(.62); }
+      .lottie-pet[data-tint="bad"] { filter:brightness(1.04) drop-shadow(0 0 7px #ff4d4d); }
+      /* one-shot interaction reactions (shared by lottie + rive containers via .fx-pet) */
+      .fx-pet.lp-hop { animation:lp-hop .46s ease-out 1; }
+      .fx-pet.lp-jump { animation:lp-jump .8s cubic-bezier(.2,.85,.25,1.25) 1; }
+      .fx-pet.lp-pop { animation:lp-pop .78s ease-out 1; }
+      .fx-pet.lp-squash { animation:lp-squash .42s ease-out 1; }
+      .fx-pet.lp-spin { animation:lp-spin .76s cubic-bezier(.3,.1,.2,1) 1; }
+      .fx-pet.lp-nod { animation:lp-nod .64s ease-in-out 1; }
+      .fx-pet.lp-shake { animation:lp-shake .1s linear 6; }
+      .fx-pet.lp-dim { animation:lp-dim .9s ease-in-out 1; }
+      /* persistent moods */
+      .fx-pet.lp-angry { animation:lp-shake .09s linear infinite; filter:saturate(1.35) drop-shadow(0 0 6px #ff5a5a); }
+      .fx-pet.lp-drag { animation:lp-wobble 1s ease-in-out infinite; }
       .truck {
         position:absolute; inset:-2px -24px -4px; display:block; transform-origin:50% 85%;
         background:url("assets/optimus-truck-v2.png") center/contain no-repeat;
@@ -151,21 +199,19 @@
       #stage[data-visual="error"], #stage[data-visual="disconnected"] { --accent:#ff7272; --accent-strong:#e64f4f; }
       #stage[data-visual="celebrate"] { --accent:#81f7ff; --accent-strong:#36d9e5; }
       #stage[data-visual="working"] .arm.right { animation-duration:1.25s; }
-      #stage[data-visual="working"] .optimus { animation:robot-working 1.7s ease-in-out infinite; }
+      #stage[data-visual="working"] .kaiju { animation:robot-working 1.7s ease-in-out infinite; }
       #stage[data-visual="waiting"] .kaiju, #stage[data-visual="stuck"] .kaiju, #stage[data-visual="error"] .kaiju { animation-duration:1.45s; }
-      #stage[data-visual="waiting"] .optimus, #stage[data-visual="stuck"] .optimus, #stage[data-visual="error"] .optimus { animation:robot-alert 1.45s ease-in-out infinite; }
       #stage[data-visual="celebrate"] .kaiju { animation:celebrate .75s ease-in-out infinite; }
-      #stage[data-visual="celebrate"] .optimus { animation:robot-celebrate .7s ease-in-out infinite; }
       #stage[data-visual="waiting"] .o-eye, #stage[data-visual="stuck"] .o-eye, #stage[data-visual="error"] .o-eye { background:var(--accent); box-shadow:0 0 8px var(--accent); }
       .pet-wrap.event-waiting .signal-ring { animation:event-ring .65s ease-out 3; }
-      .pet-wrap.event-stuck .optimus, .pet-wrap.event-stuck .kaiju { animation:event-shake .12s linear 7; }
-      .pet-wrap.event-limited .optimus, .pet-wrap.event-limited .kaiju { animation:event-limited 1.5s ease-in-out 1; }
+      .pet-wrap.event-stuck .kaiju { animation:event-shake .12s linear 7; }
+      .pet-wrap.event-limited .kaiju { animation:event-limited 1.5s ease-in-out 1; }
       .pet-wrap.event-limited .scan-line { animation:event-scan 1.35s ease-in-out 1; }
-      .pet-wrap.event-error .optimus, .pet-wrap.event-error .kaiju { animation:event-glitch .16s steps(2,end) 8; }
+      .pet-wrap.event-error .kaiju { animation:event-glitch .16s steps(2,end) 8; }
       .pet-wrap.event-error .signal-ring { animation:event-error-ring .42s ease-out 3; }
-      .pet-wrap.event-celebrate .optimus, .pet-wrap.event-celebrate .kaiju { animation:event-jump .7s cubic-bezier(.2,.85,.25,1.25) 2; }
+      .pet-wrap.event-celebrate .kaiju { animation:event-jump .7s cubic-bezier(.2,.85,.25,1.25) 2; }
       .pet-wrap.event-celebrate .spark { animation:event-spark 1.25s ease-out 1; }
-      .pet-wrap.event-reconnect .optimus, .pet-wrap.event-reconnect .kaiju { animation:event-wake .9s ease-out 1; }
+      .pet-wrap.event-reconnect .kaiju { animation:event-wake .9s ease-out 1; }
       .pet-wrap.event-reconnect .signal-ring { animation:event-ring .7s ease-out 2; }
 
       .bubble {
@@ -191,6 +237,20 @@
       #send:disabled, #reply:disabled { opacity:.45; cursor:not-allowed; }
       .feedback { min-height:15px; color:var(--muted); font-size:11px; }
       .feedback.error { color:#ff9999; }
+
+      .pet-speech {
+        position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+        background: var(--ink); color: #08110f; padding: 6px 12px; border-radius: 14px;
+        font-weight: 700; font-size: 13px; white-space: nowrap;
+        opacity: 0; transition: opacity 0.2s ease, transform 0.2s ease;
+        pointer-events: none; z-index: 10; margin-bottom: -15px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      }
+      .pet-speech.show { opacity: 1; transform: translateX(-50%) translateY(-20px); }
+      .pet-speech::after {
+        content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+        border: 7px solid transparent; border-top-color: var(--ink);
+      }
 
       .attention {
         position:absolute; left:8px; top:10px; width:360px; min-height:92px; display:none; align-items:center; gap:12px;
@@ -236,6 +296,16 @@
       @keyframes truck-idle { 0%,100%{transform:translateY(1px)} 50%{transform:translateY(-2px)} }
       @keyframes truck-drive { 0%,100%{transform:translate(-2px,1px) rotate(-.7deg)} 50%{transform:translate(2px,-2px) rotate(.7deg)} }
       @keyframes transform-pop { 0%{opacity:.2;transform:scale(.62) rotateY(70deg)} 65%{opacity:1;transform:scale(1.07) rotateY(-7deg)} 100%{transform:scale(1) rotateY(0)} }
+      @keyframes lp-hop { 0%,100%{transform:translateY(0)} 40%{transform:translateY(-12px) scaleY(1.04)} }
+      @keyframes lp-jump { 0%,100%{transform:translateY(0) scale(1)} 42%{transform:translateY(-22px) scale(1.05)} 60%{transform:translateY(-22px) rotate(4deg)} }
+      @keyframes lp-pop { 0%{opacity:.5;transform:scale(.72) translateY(10px)} 55%{opacity:1;transform:scale(1.09) translateY(-4px)} 100%{transform:scale(1) translateY(0)} }
+      @keyframes lp-squash { 0%,100%{transform:translateY(0) scale(1,1)} 30%{transform:translateY(4px) scale(1.12,.86)} 60%{transform:translateY(-3px) scale(.94,1.08)} }
+      @keyframes lp-spin { 0%{transform:rotate(0) scale(1)} 15%{transform:rotate(-22deg) scale(.96)} 100%{transform:rotate(360deg) scale(1)} }
+      @keyframes lp-nod { 0%,100%{transform:rotate(0)} 35%{transform:rotate(7deg) translateY(-2px)} 70%{transform:rotate(-3deg)} }
+      @keyframes lp-shake { 0%{transform:translateX(-4px) rotate(-2deg)} 50%{transform:translateX(4px) rotate(2deg)} 100%{transform:translateX(-3px)} }
+      @keyframes lp-dim { 0%,100%{filter:none} 50%{filter:saturate(.5) brightness(.75)} }
+      @keyframes lp-wobble { 0%,100%{transform:rotate(-6deg)} 50%{transform:rotate(6deg)} }
+
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; } }
     </style>
   </head>
@@ -265,6 +335,7 @@
         </article>
 
         <div class="pet-wrap drag-zone" aria-label="Kaiju pet — drag to move">
+          <div id="pet-speech" class="pet-speech"></div>
           <div class="event-fx"><i class="signal-ring"></i><i class="scan-line"></i><i class="spark s1" style="--r:0deg"></i><i class="spark s2" style="--r:60deg"></i><i class="spark s3" style="--r:120deg"></i><i class="spark s4" style="--r:180deg"></i><i class="spark s5" style="--r:240deg"></i><i class="spark s6" style="--r:300deg"></i></div>
           <div class="aura"></div>
           <div class="optimus" aria-label="Optimus Prime">
@@ -282,6 +353,8 @@
             <div class="foot left"></div><div class="foot right"></div>
           </div>
           <div class="engine-pet" aria-hidden="true"></div>
+          <div class="lottie-pet fx-pet" aria-hidden="true"></div>
+          <div class="rive-pet fx-pet" aria-hidden="true"></div>
           <button id="status-dot" class="status-dot" title="Open Kaiju">!</button>
           <div id="state-label" class="state-label">Disconnected</div>
         </div>
@@ -294,7 +367,12 @@
       </nav>
     </main>
 
+    <script src="vendor/lottie.min.js"></script>
+    <script src="vendor/rive.min.js"></script>
+    <script src="blob-anim.js"></script>
     <script src="anim.js"></script>
+    <script src="lottie-pet.js"></script>
+    <script src="rive-pet.js"></script>
     <script src="characters.js"></script>
     <script>
       try {
@@ -322,9 +400,28 @@
       const engine = window.PetEngine ? new window.PetEngine() : null;
       const engineHost = $('.engine-pet');
       let engineMounted = null;
+      const lottiePet = window.LottiePet ? new window.LottiePet() : null;
+      const lottieHost = $('.lottie-pet');
+      let lottieMounted = null;
+      const rivePet = window.RivePet ? new window.RivePet() : null;
+      const riveHost = $('.rive-pet');
+      let riveMounted = null;
       const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      let character = localStorage.getItem('kaiju-pet-character') || 'optimus';
+      // The active animation controller for a character: RivePet, LottiePet,
+      // PetEngine, or null for legacy CSS pets. All share the same interface
+      // (mount/setReduced/setState/trigger/setMood/clearMood) so callers are uniform.
+      function controller(id = character) {
+        const c = charById(id);
+        if (c.rive) return rivePet;
+        if (c.engine) return engine;
+        if (c.lottie) return lottiePet;
+        return null;
+      }
+
+      // v3 key: resets the stored pick once so the new default (robocat) shows;
+      // future selections still persist.
+      let character = localStorage.getItem('kaiju-pet-character-v3') || CHARS[0].id;
       if (!CHARS.some((c) => c.id === character)) character = CHARS[0].id;
       let form = 'robot';
       ui.stage.dataset.form = form;
@@ -334,21 +431,26 @@
       function applyCharacter(id) {
         const c = charById(id);
         character = c.id;
-        localStorage.setItem('kaiju-pet-character', character);
+        localStorage.setItem('kaiju-pet-character-v3', character);
         ui.stage.dataset.character = character;
         ui.stage.dataset.engine = c.engine ? '1' : '';
+        ui.stage.dataset.lottie = c.lottie ? '1' : '';
+        ui.stage.dataset.rive = c.rive ? '1' : '';
         $('#character').textContent = 'Use ' + charById(nextCharId(character)).name;
-        if (c.engine && engine) {
-          if (engineMounted !== c.id) { engine.mount(engineHost, window.PET_DEFS[c.id]); engineMounted = c.id; }
-          engine.setReduced(reducedMotion());
-          engine.setState((snapshot && snapshot.visual) || previousVisual || 'idle');
-        }
+        const ctrl = controller(c.id);
+        if (!ctrl) return;
+        if (c.engine && engineMounted !== c.id) { engine.mount(engineHost, window.PET_DEFS[c.id]); engineMounted = c.id; }
+        if (c.lottie && lottieMounted !== c.id) { lottiePet.mount(lottieHost, window.PET_LOTTIE[c.id]); lottieMounted = c.id; }
+        if (c.rive && riveMounted !== c.id) { rivePet.mount(riveHost, window.PET_RIVE[c.id]); riveMounted = c.id; }
+        ctrl.setReduced(reducedMotion());
+        ctrl.setState((snapshot && snapshot.visual) || previousVisual || 'idle');
       }
-      // Map an agent status / visual name to an engine event burst.
+      // Map an agent status / visual name to a controller event burst.
       function driveEvent(name) {
-        if (!charById(character).engine || !engine) return;
+        const ctrl = controller();
+        if (!ctrl) return;
         const map = { waitingforinput: 'waiting', stuck: 'stuck', limited: 'limited', error: 'error' };
-        engine.trigger(map[name] || name);
+        ctrl.trigger(map[name] || name);
       }
       applyCharacter(character);
 
@@ -424,9 +526,8 @@
         }
         ui.task.textContent = agent.prompt || 'No task description.';
         ui.meta.textContent = `${statusLabels[agent.status] || agent.status} · ${agent.workspace}`;
-        const disabled = isTerminal(agent.status) || sending;
-        ui.reply.disabled = disabled;
-        ui.send.disabled = disabled;
+        ui.reply.disabled = sending;
+        ui.send.disabled = sending;
       }
 
       function render(next) {
@@ -442,7 +543,7 @@
         const unread = snapshot?.unread_count || 0;
         ui.status.textContent = unread ? String(unread) : (visual === 'disconnected' ? '×' : '•');
         renderSelect(); renderAgent();
-        if (charById(character).engine && engine) engine.setState(visual);
+        { const ctrl = controller(); if (ctrl) ctrl.setState(visual); }
 
         if (previousEvents.length) { playEventAnimation(previousEvents[0].status); driveEvent(previousEvents[0].status); }
         else if (visual === 'celebrate' && priorVisual !== 'celebrate') { playEventAnimation('celebrate'); driveEvent('celebrate'); }
@@ -471,7 +572,13 @@
 
       async function submitReply() {
         if (sending || !selectedId) return;
-        const bytes = new TextEncoder().encode(ui.reply.value.trim()).length;
+        const agent = selectedAgent();
+        if (!agent || isTerminal(agent.status)) {
+           return showFeedback('Agent is no longer accepting replies', true);
+        }
+
+        const text = ui.reply.value.trim();
+        const bytes = new TextEncoder().encode(text).length;
         if (!bytes) return showFeedback('Reply cannot be empty', true);
         if (bytes > 4096) return showFeedback('Reply must be at most 4 KiB', true);
         if ([...ui.reply.value.trim()].some((char) => /[\u0000-\u001f\u007f-\u009f]/u.test(char))) return showFeedback('Reply must be a single line', true);
@@ -503,18 +610,29 @@
         petGesture = { x: event.clientX, y: event.clientY };
       });
       window.addEventListener('mousemove', async (event) => {
-        if (!petGesture || !(event.buttons & 1)) return;
+        if (!petGesture) {
+          if (ui.pet && !(event.buttons & 1)) {
+            const rect = ui.pet.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const deltaX = (event.clientX - centerX) / window.innerWidth;
+            const deltaY = (event.clientY - centerY) / window.innerHeight;
+            ui.pet.style.transform = `translate(${deltaX * 15}px, ${deltaY * 15}px) rotate(${deltaX * 8}deg)`;
+          }
+          return;
+        }
+        if (!(event.buttons & 1)) return;
         if (Math.hypot(event.clientX - petGesture.x, event.clientY - petGesture.y) < 4) return;
         petGesture = null;
         const drive = character === 'optimus';
-        const eng = charById(character).engine && engine;
+        const ctrl = controller();
         if (drive) { ui.pet.classList.add('is-driving'); displayForm('truck'); }
-        if (eng) engine.setMood('dragging', 0);
+        if (ctrl) ctrl.setMood('dragging', 0);
         try { await currentWindow.startDragging(); }
         catch (error) { showFeedback(`Drag failed: ${error}`, true); }
         finally {
           if (drive) { ui.pet.classList.remove('is-driving'); displayForm(form); }
-          if (eng) engine.clearMood();
+          if (ctrl) ctrl.clearMood();
         }
       });
       window.addEventListener('mouseup', (event) => {
@@ -526,20 +644,20 @@
       });
       // Interaction reactions for engine characters: hover perks, a click pokes,
       // double-click spins, and rapid clicking makes it angry.
-      const engineActive = () => charById(character).engine && engine;
-      ui.pet.addEventListener('mouseenter', () => { if (engineActive()) engine.trigger('hover'); });
+      ui.pet.addEventListener('mouseenter', () => { const c = controller(); if (c) c.trigger('hover'); });
       ui.pet.addEventListener('dblclick', (event) => {
         if (event.target.closest('button')) return;
-        if (engineActive()) engine.trigger('spin');
+        const c = controller(); if (c) c.trigger('spin');
       });
       let clickBurst = [];
       ui.pet.addEventListener('click', (event) => {
-        if (event.target.closest('button') || !engineActive()) return;
+        const c = controller();
+        if (event.target.closest('button') || !c) return;
         const now = performance.now();
         clickBurst = clickBurst.filter((t) => now - t < 1500);
         clickBurst.push(now);
-        if (clickBurst.length >= 4) { clickBurst = []; engine.setMood('angry', 2600); }
-        else engine.trigger('poke');
+        if (clickBurst.length >= 4) { clickBurst = []; c.setMood('angry', 2600); }
+        else c.trigger('poke');
       });
       ui.status.addEventListener('click', openBubble);
       ui.attention.addEventListener('click', openBubble);

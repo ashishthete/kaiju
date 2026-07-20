@@ -77,6 +77,21 @@ async function savePrefs() {
   } catch (e) { status.textContent = "save failed"; }
 }
 
+// Ask the daemon to spawn the desktop pet companion (kaiju-pet-shell). The pet
+// runs as a separate local GUI process and reconnects to this daemon.
+async function launchPet(btn) {
+  const label = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = "launching…"; }
+  try {
+    const res = await api("/pet/launch", { method: "POST" });
+    if (!res.ok) note((await res.json()).error || "could not launch pet");
+  } catch (e) {
+    note("could not launch pet");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+
 function toggleNotify() {
   notifyOn = document.getElementById("notify-toggle").checked;
   localStorage.setItem("kaiju_notify", notifyOn ? "1" : "0");
