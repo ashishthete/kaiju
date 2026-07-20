@@ -931,6 +931,7 @@ pub const PAGE: &str = r#"<!doctype html>
       <button class="sm" onclick="openAdopt()">Adopt</button>
       <button class="sm" onclick="openCompare()">Compare</button>
       <button class="sm" onclick="openLeaderboard()">Leaderboard</button>
+      <button class="sm" onclick="launchPet(this)" title="Launch the desktop pet companion">🐾 Pet</button>
     </div>
     <div class="tb-sep"></div>
     <input id="filter-text" placeholder="Search agents…" oninput="applyFilter()" autocomplete="off">

@@ -62,6 +62,7 @@ pub fn routes() -> Router<AppState> {
         .route("/compare/judge", post(compare_judge))
         .route("/leaderboard", get(leaderboard))
         .route("/health", get(health))
+        .route("/pet/launch", post(launch_pet))
 }
 
 // -- Request / Response types --
@@ -275,6 +276,39 @@ fn err(status: StatusCode, msg: &str) -> impl IntoResponse {
 
 async fn health() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ok" }))
+}
+
+/// `POST /pet/launch` — spawn the desktop pet companion (`kaiju-pet-shell`),
+/// pointing it back at this daemon via `KAIJU_URL`. The pet is an optional local
+/// GUI process; we shell out to a fixed binary name (no user input, no injection)
+/// so the daemon takes no GUI dependency. Prefers a binary sitting next to the
+/// daemon (dev target dir / install dir), else falls back to a PATH lookup.
+async fn launch_pet() -> impl IntoResponse {
+    let port = std::env::var("KAIJU_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(7800);
+    let url = format!("http://127.0.0.1:{port}");
+
+    let mut command = match std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("kaiju-pet-shell")))
+        .filter(|path| path.exists())
+    {
+        Some(path) => std::process::Command::new(path),
+        None => std::process::Command::new("kaiju-pet-shell"),
+    };
+    command.env("KAIJU_URL", url);
+
+    match command.spawn() {
+        Ok(_) => Ok(Json(serde_json::json!({ "status": "launched" }))),
+        Err(e) => Err(err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!(
+                "could not launch the pet (build it with `cargo build -p kaiju-pet-shell`): {e}"
+            ),
+        )),
+    }
 }
 
 /// The live fleet dashboard (polls `/agents` from the browser).
