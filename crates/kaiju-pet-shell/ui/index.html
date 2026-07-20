@@ -91,7 +91,8 @@
       #stage[data-engine="1"] .optimus,
       #stage[data-engine="1"] .truck { display:none; }
       .lottie-pet, .rive-pet { position:absolute; inset:-6px; display:none; transform-origin:50% 88%; }
-      .lottie-pet { transition:filter .35s ease; }
+      /* Recolor the stock blue blob into a fresh teal/mint that matches the accent. */
+      .lottie-pet { transition:filter .35s ease; filter:hue-rotate(-62deg) saturate(1.22) brightness(1.05); }
       .lottie-pet svg, .rive-pet canvas { display:block; width:100%; height:100%; }
       #stage[data-lottie="1"] .lottie-pet,
       #stage[data-rive="1"] .rive-pet { display:block; }
@@ -113,6 +114,27 @@
       /* persistent moods */
       .fx-pet.lp-angry { animation:lp-shake .09s linear infinite; filter:saturate(1.35) drop-shadow(0 0 6px #ff5a5a); }
       .fx-pet.lp-drag { animation:lp-wobble 1s ease-in-out infinite; }
+      /* --- Blob (lottie) ambient life: breathing, glow, twinkle, entrance pop.
+         Low specificity on purpose so the one-shot reactions and moods above
+         still win while active; scoped to the blob because ::before/::after only
+         render while .lottie-pet is shown. --- */
+      .lottie-pet { animation:lp-breathe 3.6s ease-in-out infinite; }
+      .lottie-pet::before {
+        content:""; position:absolute; inset:14% 20% 6%; border-radius:50%; z-index:-1; pointer-events:none;
+        background:radial-gradient(circle, color-mix(in srgb, var(--accent) 42%, transparent), transparent 68%);
+        animation:lp-glow 4.4s ease-in-out infinite;
+      }
+      .lottie-pet::after {
+        content:""; position:absolute; left:24%; top:22%; width:5px; height:5px; border-radius:50%;
+        background:#fff; pointer-events:none; opacity:0;
+        box-shadow:104px 34px 0 -1px #fff, 52px 150px 0 -1px color-mix(in srgb, var(--accent) 85%, #fff);
+        animation:lp-sparkle 5.5s ease-in-out infinite;
+      }
+      .fx-pet.lp-enter { animation:lp-enter .72s cubic-bezier(.2,.85,.25,1.25) 1; }
+      /* Frozen states (errored / offline) hold still and drop the ambience. */
+      .lottie-pet[data-state="error"], .lottie-pet[data-state="disconnected"] { animation:none; }
+      .lottie-pet[data-state="error"]::before, .lottie-pet[data-state="disconnected"]::before,
+      .lottie-pet[data-state="error"]::after, .lottie-pet[data-state="disconnected"]::after { animation:none; opacity:0; }
       .truck {
         position:absolute; inset:-2px -24px -4px; display:block; transform-origin:50% 85%;
         background:url("assets/optimus-truck-v2.png") center/contain no-repeat;
@@ -309,6 +331,10 @@
       @keyframes lp-shake { 0%{transform:translateX(-4px) rotate(-2deg)} 50%{transform:translateX(4px) rotate(2deg)} 100%{transform:translateX(-3px)} }
       @keyframes lp-dim { 0%,100%{filter:none} 50%{filter:saturate(.5) brightness(.75)} }
       @keyframes lp-wobble { 0%,100%{transform:rotate(-6deg)} 50%{transform:rotate(6deg)} }
+      @keyframes lp-breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.055,.985)} }
+      @keyframes lp-glow { 0%,100%{opacity:.3;transform:scale(.94)} 50%{opacity:.55;transform:scale(1.06)} }
+      @keyframes lp-sparkle { 0%,100%{opacity:0;transform:scale(.3)} 10%{opacity:.9;transform:scale(1)} 22%{opacity:0} 58%{opacity:0;transform:scale(.3)} 66%{opacity:.7;transform:scale(.9)} 78%{opacity:0} }
+      @keyframes lp-enter { 0%{opacity:0;transform:scale(.4) translateY(16px)} 60%{opacity:1;transform:scale(1.08) translateY(-4px)} 100%{transform:scale(1) translateY(0)} }
 
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; } }
     </style>

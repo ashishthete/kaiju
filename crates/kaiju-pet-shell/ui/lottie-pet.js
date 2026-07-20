@@ -47,6 +47,7 @@
       this.mood = null;
       this.moodTimer = null;
       this.reactTimer = null;
+      this.enterTimer = null;
     }
 
     mount(container, def) {
@@ -64,6 +65,14 @@
       this.cur = "idle";
       this.mood = null;
       this.setState(this.cur);
+      // Entrance pop when the blob first appears (skipped under reduced motion).
+      if (!this.reduced) {
+        container.classList.remove("lp-enter");
+        void container.offsetWidth; // reflow so the animation restarts on re-mount
+        container.classList.add("lp-enter");
+        clearTimeout(this.enterTimer);
+        this.enterTimer = setTimeout(() => container.classList.remove("lp-enter"), 720);
+      }
     }
 
     setReduced(r) {
