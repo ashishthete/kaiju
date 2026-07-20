@@ -18,6 +18,10 @@ mod macos {
 
     const PANEL_LABEL: &str = "kaiju-pet";
     static REPLY_MODE: AtomicBool = AtomicBool::new(false);
+    // True only while the pet is collapsed (its resting size). We persist the
+    // window position only at rest, so opening/closing the panel never overwrites
+    // the remembered spot with a transient panel origin.
+    static AT_REST: AtomicBool = AtomicBool::new(true);
 
     tauri_panel! {
         panel!(KaijuPanel {
@@ -126,12 +130,52 @@ mod macos {
         let window = app
             .get_webview_window(PANEL_LABEL)
             .ok_or_else(|| "pet webview is unavailable".to_string())?;
+
+        // The pet sits at the window's bottom-right corner (CSS right/bottom), so
+        // pin that corner while resizing: the panel opens up-and-left from the pet
+        // instead of shoving the whole window off the bottom-right of the screen.
+        let scale = window.scale_factor().unwrap_or(1.0);
+        let origin = new_origin_anchoring_pet(&window, scale, width, height);
+
+        // Persist the resting position only while collapsed (see AT_REST).
+        AT_REST.store(mode == "collapsed", Ordering::SeqCst);
+
         // Resize through Tauri so WKWebView's autoresizing machinery updates
         // its layout viewport. Calling NSPanel::setContentSize directly leaves
         // WebKit at zero layout bounds on macOS 26.
         window
             .set_size(Size::Logical(tauri::LogicalSize::new(width, height)))
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        if let Some(origin) = origin {
+            window
+                .set_position(Position::Logical(origin))
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+
+    // Origin (top-left) that keeps the pet's bottom-right corner fixed at the new
+    // size, clamped to the monitor under the pet so the panel stays fully visible.
+    // Returns None if the geometry can't be read (leave the window where it is).
+    fn new_origin_anchoring_pet(
+        window: &tauri::WebviewWindow,
+        scale: f64,
+        width: f64,
+        height: f64,
+    ) -> Option<tauri::LogicalPosition<f64>> {
+        let pos = window.outer_position().ok()?.to_logical::<f64>(scale);
+        let size = window.outer_size().ok()?.to_logical::<f64>(scale);
+        let mut x = pos.x + size.width - width;
+        let mut y = pos.y + size.height - height;
+        if let Some(monitor) = window.current_monitor().ok().flatten() {
+            let m_pos = monitor.position().to_logical::<f64>(scale);
+            let m_size = monitor.size().to_logical::<f64>(scale);
+            let max_x = (m_pos.x + m_size.width - width).max(m_pos.x);
+            let max_y = (m_pos.y + m_size.height - height).max(m_pos.y);
+            x = x.clamp(m_pos.x, max_x);
+            y = y.clamp(m_pos.y, max_y);
+        }
+        Some(tauri::LogicalPosition::new(x, y))
     }
 
     #[tauri::command]
@@ -330,6 +374,11 @@ mod macos {
             let scale_window = window.clone();
             window.on_window_event(move |event| {
                 if let WindowEvent::Moved(position) = event {
+                    // Persist only the resting position; skip the programmatic moves
+                    // that opening/closing the panel produces.
+                    if !AT_REST.load(Ordering::SeqCst) {
+                        return;
+                    }
                     let scale = scale_window.scale_factor().unwrap_or(1.0);
                     let position = position.to_logical::<f64>(scale);
                     if let Ok(mut preferences) = preferences.lock() {
