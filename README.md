@@ -56,6 +56,33 @@ cargo install --path crates/kaiju-cli
 cargo run -p kaiju-daemon
 ```
 
+### Start at login (macOS)
+
+```bash
+make install-service
+```
+
+Installs the daemon, pet, and CLI, then registers two launchd user agents in
+`~/Library/LaunchAgents/`:
+
+| Label | Binary | Behaviour |
+|---|---|---|
+| `dev.kaiju.daemon` | `kaiju-daemon` | Starts at login, restarts if it crashes. Logs to `~/.kaiju/logs/daemon.{out,err}.log`. |
+| `dev.kaiju.pet` | `kaiju-pet-shell` | Starts at login. Quitting it keeps it quit until next login or `kaiju service restart pet`. |
+
+```bash
+kaiju service status              # daemon  running  pid 4821
+kaiju service restart [daemon|pet]
+kaiju service uninstall
+```
+
+Your shell's `PATH` is captured at install time and written into the plists.
+The daemon spawns `tmux` and the agent CLIs by name, and launchd would
+otherwise hand it a minimal `PATH` that omits `/opt/homebrew/bin` — the daemon
+would start cleanly and then fail every agent spawn. Re-run
+`kaiju service install` after changing your `PATH` or reinstalling the
+binaries.
+
 ## Quickstart
 
 ```bash
