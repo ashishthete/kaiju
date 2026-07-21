@@ -132,6 +132,9 @@
       this.driven = false; // true once Rust is pacing us; rAF then stands down
       this.parked = false; // rest pose already rendered for a frozen state
       this.unlistenTick = null;
+      this.def = null; // kept so a lost GPU context can remount the same model
+      this.contextLost = false;
+      this.onFailure = null; // set by the caller to fall back to another pet
       this.loadToken = 0;
       this._onPointer = this._onPointer.bind(this);
       this._onVisibility = this._onVisibility.bind(this);
@@ -144,6 +147,7 @@
       const token = ++this.loadToken;
       this._teardown();
       this.host = container;
+      this.def = def;
       container.innerHTML = "";
 
       let THREE, GLTFLoader;
@@ -160,6 +164,10 @@
       }
       if (token !== this.loadToken) return false; // a newer mount superseded us
 
+      // The old context is gone; from here on, losses are real.
+      this.disposing = false;
+      this.contextLost = false;
+
       const w = container.clientWidth || 220;
       const h = container.clientHeight || 220;
 
@@ -169,6 +177,33 @@
       renderer.setSize(w, h, false);
       renderer.domElement.style.cssText = "width:100%;height:100%;display:block";
       container.appendChild(renderer.domElement);
+
+      // WKWebView can reclaim the GPU context for an occluded panel. Without
+      // this, render() silently no-ops, the canvas goes blank, and because a
+      // glb character hides every other pet the whole pet appears to vanish
+      // while the process is still alive.
+      renderer.domElement.addEventListener("webglcontextlost", (e) => {
+        // _teardown() calls forceContextLoss(), which fires this event. Without
+        // the guard, tearing down would trigger a remount, which tears down
+        // again — an endless loop.
+        if (this.disposing) return;
+        e.preventDefault(); // required, or the context can never be restored
+        this.contextLost = true;
+        this._stop();
+        report("warn", "WebGL context lost; waiting for restore");
+      });
+      renderer.domElement.addEventListener("webglcontextrestored", () => {
+        if (this.disposing) return;
+        report("warn", "WebGL context restored; remounting");
+        this.contextLost = false;
+        const def = this.def;
+        const host = this.host;
+        if (def && host) {
+          this.mount(host, def).then((ok) => {
+            if (!ok && this.onFailure) this.onFailure();
+          });
+        }
+      });
 
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(30, w / h, 0.1, 100);
@@ -496,12 +531,13 @@
     }
 
     _renderOnce() {
-      if (!this.three) return;
+      if (!this.three || this.contextLost) return;
       const { renderer, scene, camera } = this.three;
       renderer.render(scene, camera);
     }
 
     _teardown() {
+      this.disposing = true;
       this._stop();
       clearTimeout(this.moodTimer);
       window.removeEventListener("pointermove", this._onPointer);

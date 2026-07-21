@@ -334,6 +334,44 @@ mod macos {
         });
     }
 
+    /// Watches the panel and puts it back if the system orders it out.
+    ///
+    /// Nothing in this app hides the panel, yet it can vanish while the process
+    /// stays alive and healthy. A panel at ScreenSaver level can be ordered out
+    /// by the window server — screen lock, display sleep, a screensaver, or a
+    /// Space transition — and it is not always restored afterwards.
+    ///
+    /// Logs every transition, so the log says exactly when and why the pet went
+    /// missing rather than leaving us to guess.
+    fn start_visibility_watchdog(app: tauri::AppHandle) {
+        const POLL: std::time::Duration = std::time::Duration::from_secs(2);
+
+        std::thread::spawn(move || {
+            let mut was_visible = true;
+            loop {
+                std::thread::sleep(POLL);
+
+                let Some(window) = app.get_webview_window(PANEL_LABEL) else {
+                    continue;
+                };
+                let visible = window.is_visible().unwrap_or(true);
+
+                if !visible {
+                    if was_visible {
+                        eprintln!(
+                            "KAIJU_WATCHDOG panel went invisible (position={:?}); restoring",
+                            window.outer_position()
+                        );
+                    }
+                    let _ = window.show();
+                } else if !was_visible {
+                    eprintln!("KAIJU_WATCHDOG panel visible again");
+                }
+                was_visible = visible;
+            }
+        });
+    }
+
     fn restore_position(app: &tauri::AppHandle, x: i32, y: i32) -> tauri::LogicalPosition<f64> {
         let monitors = app.available_monitors().unwrap_or_default();
         let still_visible = monitors.iter().any(|monitor| {
@@ -456,6 +494,7 @@ mod macos {
 
         start_bridge(app.handle().clone(), state, messages);
         start_cursor_ticker(app.handle().clone());
+        start_visibility_watchdog(app.handle().clone());
 
         // Launch-time character override, for testing a character without
         // driving the right-click menu. Emitted after a short delay so the

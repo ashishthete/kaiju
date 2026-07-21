@@ -498,6 +498,8 @@
         // instead, and don't remember the broken choice.
         if (c.glb && glbMounted !== c.id) {
           glbMounted = c.id;
+          // Also covers a GPU context that is lost and cannot be restored.
+          glbPet.onFailure = () => { glbMounted = null; applyCharacter(CHARS[0].id); };
           glbPet.mount(glbHost, window.PET_GLB[c.id]).then((ok) => {
             if (ok || charById(character).id !== c.id) return;
             console.warn('[pet] 3D character failed to mount; falling back to', CHARS[0].id);
