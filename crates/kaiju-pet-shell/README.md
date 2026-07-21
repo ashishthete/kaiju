@@ -16,13 +16,38 @@ cargo run -p kaiju-pet-shell
 The shell defaults to `http://127.0.0.1:7800`. Override it with `KAIJU_URL`;
 set `KAIJU_TOKEN` when the daemon requires a bearer token.
 
-- Drag the character to move the panel. Optimus transforms into the truck
-  while driving.
-- Click Optimus to toggle robot/truck form.
+- Drag the character to move the panel. Every character reacts while dragging;
+  Optimus transforms into the truck while driving.
+- Blob is the default character and changes motion for idle, working, waiting,
+  stuck, limited, error, completed, and offline states.
+- Click a character to poke it, double-click to spin it, or click rapidly to
+  trigger an annoyed reaction. Click Optimus to toggle robot/truck form.
 - Click the status badge to open the agent bubble.
 - Right-click for character selection, dashboard, and Quit.
 - Click the reply field for temporary keyboard focus. Send, Escape, or blur
   returns the panel to passive non-keyable mode.
+
+## Programmatic character control
+
+The daemon drives the pet automatically. The webview also exposes a small API
+for previews and future integrations:
+
+```js
+KaijuPet.setStatus("working");       // also accepts running, waiting_for_input, completed, etc.
+KaijuPet.react("celebrate");
+KaijuPet.speak("Build completed!");  // speech bubble + system voice
+KaijuPet.setMood("angry", 2000);
+KaijuPet.clearMood();
+KaijuPet.setCharacter("blob");
+KaijuPet.getState();
+KaijuPet.getCapabilities();
+```
+
+A status can also be sent as a DOM event:
+
+```js
+window.dispatchEvent(new CustomEvent("kaiju-pet:set-status", { detail: "limited" }));
+```
 
 ## Why it floats over full-screen apps
 

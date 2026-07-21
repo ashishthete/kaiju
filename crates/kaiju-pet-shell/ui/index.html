@@ -90,19 +90,28 @@
       #stage[data-engine="1"] .kaiju,
       #stage[data-engine="1"] .optimus,
       #stage[data-engine="1"] .truck { display:none; }
-      .lottie-pet, .rive-pet { position:absolute; inset:-6px; display:none; transform-origin:50% 88%; }
-      /* Recolor the stock blue blob into a fresh teal/mint that matches the accent. */
-      .lottie-pet { transition:filter .35s ease; filter:hue-rotate(-62deg) saturate(1.22) brightness(1.05); }
-      .lottie-pet svg, .rive-pet canvas { display:block; width:100%; height:100%; }
-      #stage[data-lottie="1"] .lottie-pet,
-      #stage[data-rive="1"] .rive-pet { display:block; }
-      #stage[data-lottie="1"] .kaiju, #stage[data-lottie="1"] .optimus, #stage[data-lottie="1"] .truck, #stage[data-lottie="1"] .engine-pet, #stage[data-lottie="1"] .aura,
-      #stage[data-rive="1"] .kaiju, #stage[data-rive="1"] .optimus, #stage[data-rive="1"] .truck, #stage[data-rive="1"] .engine-pet, #stage[data-rive="1"] .aura { display:none; }
-      /* persistent state tint (lottie only; the rive robocat conveys state via faces) */
+      .lottie-pet { position:absolute; inset:-6px; display:none; transform-origin:50% 88%; }
+      .lottie-pet { transition:filter .35s ease; }
+      /* Recolor the stock blue blob into a fresh teal/mint on the SVG itself, so the
+         per-state tint filters on the container (dim/off/bad) still compose on top. */
+      .lottie-pet svg { filter:hue-rotate(-62deg) saturate(1.2) brightness(1.05); }
+      .lottie-pet svg { display:block; width:100%; height:100%; }
+      #stage[data-lottie="1"] .lottie-pet { display:block; }
+      #stage[data-lottie="1"] .kaiju, #stage[data-lottie="1"] .optimus, #stage[data-lottie="1"] .truck, #stage[data-lottie="1"] .engine-pet, #stage[data-lottie="1"] .aura, #stage[data-lottie="1"] .glb-pet { display:none; }
+
+      /* 3D character (GlbPet). The canvas is transparent so the NSPanel stays
+         see-through; the per-state tint is applied as a filter by glb-pet.js
+         rather than data-tint, since there is no SVG to recolor. */
+      .glb-pet { position:absolute; inset:-6px; display:none; transition:filter .35s ease; }
+      .glb-pet canvas { display:block; width:100%; height:100%; }
+      #stage[data-glb="1"] .glb-pet { display:block; }
+      #stage[data-glb="1"] .kaiju, #stage[data-glb="1"] .optimus, #stage[data-glb="1"] .truck, #stage[data-glb="1"] .engine-pet, #stage[data-glb="1"] .aura, #stage[data-glb="1"] .lottie-pet { display:none; }
+
+      /* persistent state tint */
       .lottie-pet[data-tint="dim"] { filter:saturate(.6) brightness(.82); }
       .lottie-pet[data-tint="off"] { filter:grayscale(1) brightness(.7) opacity(.62); }
       .lottie-pet[data-tint="bad"] { filter:brightness(1.04) drop-shadow(0 0 7px #ff4d4d); }
-      /* one-shot interaction reactions (shared by lottie + rive containers via .fx-pet) */
+      /* one-shot interaction reactions */
       .fx-pet.lp-hop { animation:lp-hop .46s ease-out 1; }
       .fx-pet.lp-jump { animation:lp-jump .8s cubic-bezier(.2,.85,.25,1.25) 1; }
       .fx-pet.lp-pop { animation:lp-pop .78s ease-out 1; }
@@ -335,13 +344,12 @@
       @keyframes lp-glow { 0%,100%{opacity:.3;transform:scale(.94)} 50%{opacity:.55;transform:scale(1.06)} }
       @keyframes lp-sparkle { 0%,100%{opacity:0;transform:scale(.3)} 10%{opacity:.9;transform:scale(1)} 22%{opacity:0} 58%{opacity:0;transform:scale(.3)} 66%{opacity:.7;transform:scale(.9)} 78%{opacity:0} }
       @keyframes lp-enter { 0%{opacity:0;transform:scale(.4) translateY(16px)} 60%{opacity:1;transform:scale(1.08) translateY(-4px)} 100%{transform:scale(1) translateY(0)} }
-
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; } }
     </style>
   </head>
   <body>
     <main id="app">
-      <section id="stage" data-visual="disconnected" data-character="optimus" data-form="robot">
+      <section id="stage" data-visual="disconnected" data-character="blob" data-form="robot">
         <aside id="attention" class="attention" aria-live="polite">
           <i class="pulse"></i><div><strong id="attention-title">Kaiju needs attention</strong><span id="attention-detail"></span></div>
         </aside>
@@ -384,7 +392,7 @@
           </div>
           <div class="engine-pet" aria-hidden="true"></div>
           <div class="lottie-pet fx-pet" aria-hidden="true"></div>
-          <div class="rive-pet fx-pet" aria-hidden="true"></div>
+          <div class="glb-pet fx-pet" aria-hidden="true"></div>
           <button id="status-dot" class="status-dot" title="Open Kaiju">!</button>
           <div id="state-label" class="state-label">Disconnected</div>
         </div>
@@ -397,12 +405,21 @@
       </nav>
     </main>
 
+    <!-- Resolves the bare specifiers GlbPet dynamic-imports. three.js is only
+         fetched when a glb character is actually selected. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three/three.module.min.js",
+          "three/addons/": "./vendor/three/addons/"
+        }
+      }
+    </script>
     <script src="vendor/lottie.min.js"></script>
-    <script src="vendor/rive.min.js"></script>
     <script src="blob-anim.js"></script>
     <script src="anim.js"></script>
     <script src="lottie-pet.js"></script>
-    <script src="rive-pet.js"></script>
+    <script src="glb-pet.js"></script>
     <script src="characters.js"></script>
     <script>
       try {
@@ -413,7 +430,7 @@
       const ui = {
         stage: $('#stage'), pet: $('.pet-wrap'), attention: $('#attention'), attentionTitle: $('#attention-title'), attentionDetail: $('#attention-detail'),
         select: $('#agent-select'), task: $('#task'), meta: $('#meta'), logs: $('#logs'), reply: $('#reply'), send: $('#send'),
-        feedback: $('#feedback'), status: $('#status-dot'), label: $('#state-label'), menu: $('#menu')
+        feedback: $('#feedback'), status: $('#status-dot'), label: $('#state-label'), menu: $('#menu'), petSpeech: $('#pet-speech')
       };
       let snapshot = null;
       let selectedId = null;
@@ -421,6 +438,7 @@
       let sending = false;
       let previousVisual = null;
       let eventTimer = null;
+      let speechTimer = null;
       const CHARS = window.PET_CHARACTERS || [
         { id: 'optimus', name: 'Optimus Prime', engine: false },
         { id: 'kaiju', name: 'Kaiju', engine: false },
@@ -433,25 +451,25 @@
       const lottiePet = window.LottiePet ? new window.LottiePet() : null;
       const lottieHost = $('.lottie-pet');
       let lottieMounted = null;
-      const rivePet = window.RivePet ? new window.RivePet() : null;
-      const riveHost = $('.rive-pet');
-      let riveMounted = null;
+      const glbPet = window.GlbPet ? new window.GlbPet() : null;
+      const glbHost = $('.glb-pet');
+      let glbMounted = null;
       const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      // The active animation controller for a character: RivePet, LottiePet,
-      // PetEngine, or null for legacy CSS pets. All share the same interface
+      // The active animation controller for a character: LottiePet, PetEngine,
+      // or null for legacy CSS pets. Both share the same interface
       // (mount/setReduced/setState/trigger/setMood/clearMood) so callers are uniform.
       function controller(id = character) {
         const c = charById(id);
-        if (c.rive) return rivePet;
         if (c.engine) return engine;
         if (c.lottie) return lottiePet;
+        if (c.glb) return glbPet;
         return null;
       }
 
-      // v3 key: resets the stored pick once so the new default (robocat) shows;
+      // v6 removes retired characters and resets the default to Blob.
       // future selections still persist.
-      let character = localStorage.getItem('kaiju-pet-character-v3') || CHARS[0].id;
+      let character = localStorage.getItem('kaiju-pet-character-v6') || CHARS[0].id;
       if (!CHARS.some((c) => c.id === character)) character = CHARS[0].id;
       let form = 'robot';
       ui.stage.dataset.form = form;
@@ -461,19 +479,21 @@
       function applyCharacter(id) {
         const c = charById(id);
         character = c.id;
-        localStorage.setItem('kaiju-pet-character-v3', character);
+        localStorage.setItem('kaiju-pet-character-v6', character);
         ui.stage.dataset.character = character;
         ui.stage.dataset.engine = c.engine ? '1' : '';
         ui.stage.dataset.lottie = c.lottie ? '1' : '';
-        ui.stage.dataset.rive = c.rive ? '1' : '';
+        ui.stage.dataset.glb = c.glb ? '1' : '';
         $('#character').textContent = 'Use ' + charById(nextCharId(character)).name;
         const ctrl = controller(c.id);
         if (!ctrl) return;
         if (c.engine && engineMounted !== c.id) { engine.mount(engineHost, window.PET_DEFS[c.id]); engineMounted = c.id; }
         if (c.lottie && lottieMounted !== c.id) { lottiePet.mount(lottieHost, window.PET_LOTTIE[c.id]); lottieMounted = c.id; }
-        if (c.rive && riveMounted !== c.id) { rivePet.mount(riveHost, window.PET_RIVE[c.id]); riveMounted = c.id; }
+        // mount() is async (loads three.js + the model); state is re-applied on
+        // completion inside GlbPet, so we do not await it here.
+        if (c.glb && glbMounted !== c.id) { glbPet.mount(glbHost, window.PET_GLB[c.id]); glbMounted = c.id; }
         ctrl.setReduced(reducedMotion());
-        ctrl.setState((snapshot && snapshot.visual) || previousVisual || 'idle');
+        ctrl.setState((snapshot && snapshot.visual) || previousVisual || ui.stage.dataset.visual || 'idle');
       }
       // Map an agent status / visual name to a controller event burst.
       function driveEvent(name) {
@@ -493,6 +513,55 @@
         error: 'Error', completed: 'Completed', stopped: 'Stopped', unknown: 'Unknown'
       };
       const isTerminal = (status) => ['completed', 'stopped', 'error'].includes(status);
+
+      // Public behavior API for previews, plugins, and future native commands.
+      // Live daemon snapshots continue to drive these same controls automatically.
+      const visualForStatus = (status) => ({
+        starting: 'working', running: 'working', waitingforinput: 'waiting',
+        completed: 'celebrate', stopped: 'idle', unknown: 'idle',
+      })[status] || status;
+      function setProgrammaticStatus(status) {
+        const normalized = String(status).toLowerCase().replaceAll('_', '');
+        const visual = visualForStatus(normalized);
+        if (!Object.prototype.hasOwnProperty.call(labels, visual)) throw new Error(`Unknown pet status: ${status}`);
+        previousVisual = visual;
+        ui.stage.dataset.visual = visual;
+        ui.label.textContent = labels[visual];
+        const ctrl = controller();
+        if (ctrl) ctrl.setState(visual);
+        return visual;
+      }
+      function speakPet(text) {
+        const value = String(text || '').trim();
+        if (!value) return false;
+        ui.petSpeech.textContent = value;
+        ui.petSpeech.classList.add('show');
+        clearTimeout(speechTimer);
+        speechTimer = setTimeout(() => ui.petSpeech.classList.remove('show'), Math.min(9000, 1400 + value.length * 55));
+        const ctrl = controller();
+        if (ctrl && typeof ctrl.speak === 'function') return ctrl.speak(value);
+        if (window.speechSynthesis && window.SpeechSynthesisUtterance) {
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(new SpeechSynthesisUtterance(value));
+          return true;
+        }
+        return false;
+      }
+      window.KaijuPet = Object.freeze({
+        statuses: Object.freeze(Object.keys(labels)),
+        getState: () => ({ character, visual: ui.stage.dataset.visual }),
+        getCapabilities: () => ({ speech: Boolean(window.speechSynthesis) }),
+        setCharacter: (id) => {
+          if (!CHARS.some((item) => item.id === id)) throw new Error(`Unknown character: ${id}`);
+          applyCharacter(id);
+        },
+        setStatus: setProgrammaticStatus,
+        react: (name) => driveEvent(name),
+        speak: speakPet,
+        setMood: (name, duration = 0) => { const ctrl = controller(); if (ctrl) ctrl.setMood(name, duration); },
+        clearMood: () => { const ctrl = controller(); if (ctrl) ctrl.clearMood(); },
+      });
+      window.addEventListener('kaiju-pet:set-status', (event) => setProgrammaticStatus(event.detail));
 
       function playEventAnimation(name) {
         const classes = ['event-waiting','event-stuck','event-limited','event-error','event-celebrate','event-reconnect'];
