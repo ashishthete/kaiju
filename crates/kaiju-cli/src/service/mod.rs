@@ -1,5 +1,6 @@
 //! Registers the kaiju daemon and pet as macOS launchd user agents.
 
+mod launchctl;
 pub mod plist;
 
 use plist::ServiceSpec;
