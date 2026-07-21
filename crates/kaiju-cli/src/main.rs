@@ -220,15 +220,15 @@ async fn main() {
         Commands::Pet => {
             // The pet is a separate, optional GUI process. Shell out by name so
             // the CLI never takes a GUI dependency; forward the daemon URL.
-            match std::process::Command::new("kaiju-pet")
+            match std::process::Command::new("kaiju-pet-shell")
                 .env("KAIJU_URL", &cli.url)
                 .status()
             {
                 Ok(s) if s.success() => Ok(()),
-                Ok(_) => Err("kaiju-pet exited with an error".into()),
-                Err(_) => Err(
-                    "kaiju-pet not found on PATH — build it with `cargo build -p kaiju-pet`".into(),
-                ),
+                Ok(_) => Err("kaiju-pet-shell exited with an error".into()),
+                Err(_) => Err("kaiju-pet-shell not found on PATH — build it with \
+                     `cargo build -p kaiju-pet-shell`"
+                    .into()),
             }
         }
     };

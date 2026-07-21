@@ -16,6 +16,6 @@
   },
   "bundle": {
     "active": false,
-    "icon": ["../kaiju-pet/assets/pet.png"]
+    "icon": ["ui/assets/optimus-prime-v2.png"]
   }
 }

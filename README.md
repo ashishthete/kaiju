@@ -299,12 +299,12 @@ dashboard. It is a separate GUI process — the daemon, CLI, and dashboard build
 and run without it (it is excluded from the default workspace build).
 
 ```bash
-# Build the pet explicitly (pulls in the eframe/egui GUI stack)
-cargo build -p kaiju-pet
+# Build the pet explicitly (pulls in the Tauri GUI stack; macOS only)
+cargo build -p kaiju-pet-shell
 
 # Launch it (defaults to the daemon at http://127.0.0.1:7800)
-kaiju pet                      # via the CLI launcher, forwards --url
-./target/debug/kaiju-pet       # or run the binary directly
+kaiju pet                          # via the CLI launcher, forwards --url
+./target/debug/kaiju-pet-shell     # or run the binary directly
 ```
 
 - Preferences live at `~/.config/kaiju/pet.json` (daemon URL, window position,
@@ -314,13 +314,14 @@ kaiju pet                      # via the CLI launcher, forwards --url
   `POST /agents/:id/input` — it adds no daemon endpoints.
 - Quitting or crashing the pet never affects the daemon or any agents.
 
-See `docs/superpowers/specs/2026-07-16-kaiju-pet-design.md` for the full design
-and the manual verification checklist.
+See `docs/superpowers/specs/2026-07-17-kaiju-pet-native-shell.md` for the current
+shell design, and `2026-07-16-kaiju-pet-design.md` for the original pet design
+and manual verification checklist.
 
 ## Testing
 
 ```bash
-make check     # fmt + clippy (-D warnings) + tests — the full gate (incl. kaiju-pet)
+make check     # fmt + clippy (-D warnings) + tests — the full gate (incl. the pet crates)
 cargo test     # tests only
 make smoke     # HTTP API contract against a throwaway daemon
 make e2e       # full pipeline with a fake agent (no API keys needed)
