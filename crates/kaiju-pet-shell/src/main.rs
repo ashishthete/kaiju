@@ -49,6 +49,13 @@ mod macos {
         error: Option<String>,
     }
 
+    /// Cursor direction relative to the panel centre, each component -1..1.
+    #[derive(Clone, Serialize)]
+    struct CursorTick {
+        dx: f64,
+        dy: f64,
+    }
+
     #[derive(Clone, Serialize)]
     struct SendPayload {
         id: String,
@@ -200,6 +207,16 @@ mod macos {
         Ok(())
     }
 
+    /// Surfaces webview errors in the process log.
+    ///
+    /// The panel cannot become key and has no menu bar, so there is no way to
+    /// open an inspector in a release build. Without this, a JS failure is
+    /// completely silent from outside the webview.
+    #[tauri::command]
+    fn log_js(level: String, message: String) {
+        eprintln!("KAIJU_JS [{level}] {message}");
+    }
+
     #[tauri::command]
     fn open_dashboard(state: tauri::State<'_, ShellState>) -> Result<(), String> {
         let url = state
@@ -267,6 +284,53 @@ mod macos {
                     }
                 }
             }
+        });
+    }
+
+    /// Drives the pet's animation clock and cursor tracking from Rust.
+    ///
+    /// Two reasons this cannot live in the webview:
+    ///   1. `pointermove` only fires while the cursor is INSIDE the 188pt panel,
+    ///      so a webview-side listener can never track the cursor across the
+    ///      desktop — which is the whole point of a pet that looks at you.
+    ///   2. WebKit throttles `requestAnimationFrame` in a non-activating, non-key
+    ///      NSPanel. A Rust timer is not subject to that, so the pet keeps moving
+    ///      while it sits unfocused over another app.
+    ///
+    /// Emits the cursor direction already normalised to the panel's centre, so
+    /// the webview needs no screen geometry of its own.
+    fn start_cursor_ticker(app: tauri::AppHandle) {
+        const TICK: std::time::Duration = std::time::Duration::from_millis(33); // ~30Hz
+
+        std::thread::spawn(move || loop {
+            std::thread::sleep(TICK);
+
+            let Some(window) = app.get_webview_window(PANEL_LABEL) else {
+                continue;
+            };
+            let (Ok(cursor), Ok(origin), Ok(size), Ok(scale)) = (
+                app.cursor_position(),
+                window.outer_position(),
+                window.inner_size(),
+                window.scale_factor(),
+            ) else {
+                continue;
+            };
+
+            let cursor = cursor.to_logical::<f64>(scale);
+            let origin = origin.to_logical::<f64>(scale);
+            let size = size.to_logical::<f64>(scale);
+            let center_x = origin.x + size.width / 2.0;
+            let center_y = origin.y + size.height / 2.0;
+
+            // Normalise over a few panel-widths so the head turns for cursors
+            // near the pet and saturates for ones far away.
+            let span = (size.width.max(size.height) * 3.0).max(1.0);
+            let payload = CursorTick {
+                dx: ((cursor.x - center_x) / span).clamp(-1.0, 1.0),
+                dy: ((cursor.y - center_y) / span).clamp(-1.0, 1.0),
+            };
+            let _ = app.emit("kaiju:tick", payload);
         });
     }
 
@@ -391,6 +455,27 @@ mod macos {
         }
 
         start_bridge(app.handle().clone(), state, messages);
+        start_cursor_ticker(app.handle().clone());
+
+        // Launch-time character override, for testing a character without
+        // driving the right-click menu. Emitted after a short delay so the
+        // webview has registered its listener.
+        if let Ok(id) = std::env::var("KAIJU_PET_CHARACTER") {
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(800));
+                let _ = handle.emit("kaiju:force-character", id);
+            });
+        }
+
+        // The panel has no menu bar and cannot become key on demand, so there is
+        // no way to reach the inspector by hand. Open it automatically in debug
+        // builds; release builds ship without it.
+        #[cfg(debug_assertions)]
+        if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+            window.open_devtools();
+        }
+
         panel.show();
         app.manage(panel.clone());
         // Converting the hidden Tauri window changes its Objective-C class.
@@ -437,6 +522,7 @@ mod macos {
                 begin_reply,
                 end_reply,
                 open_dashboard,
+                log_js,
                 quit,
             ])
             .setup(setup)

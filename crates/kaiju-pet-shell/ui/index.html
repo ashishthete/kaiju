@@ -491,7 +491,20 @@
         if (c.lottie && lottieMounted !== c.id) { lottiePet.mount(lottieHost, window.PET_LOTTIE[c.id]); lottieMounted = c.id; }
         // mount() is async (loads three.js + the model); state is re-applied on
         // completion inside GlbPet, so we do not await it here.
-        if (c.glb && glbMounted !== c.id) { glbPet.mount(glbHost, window.PET_GLB[c.id]); glbMounted = c.id; }
+        //
+        // Selecting a glb character hides every other pet via #stage[data-glb].
+        // If the 3D runtime or model fails to load, that would leave an EMPTY
+        // stage — a pet that silently vanishes. Fall back to the first character
+        // instead, and don't remember the broken choice.
+        if (c.glb && glbMounted !== c.id) {
+          glbMounted = c.id;
+          glbPet.mount(glbHost, window.PET_GLB[c.id]).then((ok) => {
+            if (ok || charById(character).id !== c.id) return;
+            console.warn('[pet] 3D character failed to mount; falling back to', CHARS[0].id);
+            glbMounted = null;
+            applyCharacter(CHARS[0].id);
+          });
+        }
         ctrl.setReduced(reducedMotion());
         ctrl.setState((snapshot && snapshot.visual) || previousVisual || ui.stage.dataset.visual || 'idle');
       }
@@ -741,13 +754,24 @@
         form = form === 'robot' ? 'truck' : 'robot';
         displayForm(form);
       });
-      // Interaction reactions for engine characters: hover perks, a click pokes,
-      // double-click spins, and rapid clicking makes it angry.
+      // Interaction reactions: hover perks, a click pokes, double-click waves,
+      // and rapid clicking makes it angry.
+      //
+      // Double-click used to spin the character a full turn. That works for a
+      // flat Lottie blob but on a 3D model it just presents the back of the
+      // mesh, so glb characters wave instead. Controllers that have no 'wave'
+      // reaction ignore the unknown name and keep their old behaviour.
       ui.pet.addEventListener('mouseenter', () => { const c = controller(); if (c) c.trigger('hover'); });
       ui.pet.addEventListener('dblclick', (event) => {
         if (event.target.closest('button')) return;
-        const c = controller(); if (c) c.trigger('spin');
+        const c = controller(); if (!c) return;
+        c.trigger(charById(character).glb ? 'wave' : 'spin');
       });
+      // Clicking escalates: a poke, then a startled bounce, then it loses its
+      // temper — an angry burst (stomp + shake) on top of the angry mood, so
+      // there is a visible ACTION and not just a persistent tint.
+      // Controllers without 'quick'/'angry' reactions ignore them, so the
+      // Lottie and CSS pets keep their existing single-poke behaviour.
       let clickBurst = [];
       ui.pet.addEventListener('click', (event) => {
         const c = controller();
@@ -755,8 +779,16 @@
         const now = performance.now();
         clickBurst = clickBurst.filter((t) => now - t < 1500);
         clickBurst.push(now);
-        if (clickBurst.length >= 4) { clickBurst = []; c.setMood('angry', 2600); }
-        else c.trigger('poke');
+        const rich = !!charById(character).glb;
+        if (clickBurst.length >= 4) {
+          clickBurst = [];
+          c.setMood('angry', 2600);
+          if (rich) c.trigger('angry');
+        } else if (clickBurst.length > 1 && rich) {
+          c.trigger('quick');
+        } else {
+          c.trigger('poke');
+        }
       });
       ui.status.addEventListener('click', openBubble);
       ui.attention.addEventListener('click', openBubble);
@@ -793,6 +825,13 @@
       });
       $('#quit').addEventListener('click', () => invoke('quit'));
 
+      // KAIJU_PET_CHARACTER=<id> selects a character at launch, overriding the
+      // stored choice. Exists so a character can be tested without driving the
+      // right-click menu by hand; it does not persist.
+      listen('kaiju:force-character', (event) => {
+        const id = event.payload;
+        if (id && CHARS.some((c) => c.id === id)) applyCharacter(id);
+      });
       listen('kaiju:snapshot', (event) => render(event.payload));
       listen('kaiju:logs', (event) => {
         if (event.payload.id !== selectedId) return;
