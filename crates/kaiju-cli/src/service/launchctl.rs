@@ -58,14 +58,15 @@ pub fn print(uid: &str, label: &str) -> Option<String> {
 }
 
 fn run(bin: &str, args: &[&str]) -> Result<String, ServiceError> {
-    let output = Command::new(bin)
-        .args(args)
-        .output()
-        .map_err(|e| ServiceError::LaunchctlFailed {
-            command: format!("{bin} {}", args.join(" ")),
-            code: -1,
-            stderr: e.to_string(),
-        })?;
+    let output =
+        Command::new(bin)
+            .args(args)
+            .output()
+            .map_err(|e| ServiceError::LaunchctlFailed {
+                command: format!("{bin} {}", args.join(" ")),
+                code: -1,
+                stderr: e.to_string(),
+            })?;
 
     if !output.status.success() {
         return Err(ServiceError::LaunchctlFailed {

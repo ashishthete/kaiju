@@ -47,6 +47,9 @@ pub enum ServiceError {
 
     #[error("`kaiju service` uses launchd and is macOS-only")]
     NotMacos,
+
+    #[error("unknown service `{target}` — expected `daemon` or `pet`")]
+    UnknownTarget { target: String },
 }
 
 /// Where installed kaiju binaries are looked for, in priority order.
@@ -142,10 +145,140 @@ fn pet_spec(home: &Path) -> Result<ServiceSpec, ServiceError> {
     })
 }
 
+fn require_macos() -> Result<(), ServiceError> {
+    if cfg!(target_os = "macos") {
+        Ok(())
+    } else {
+        Err(ServiceError::NotMacos)
+    }
+}
+
+/// Write the plist and (re)load it. Bootout first so a re-run upgrades in
+/// place rather than failing on an already-loaded label.
+fn install_one(uid: &str, home: &Path, spec: &ServiceSpec) -> Result<(), ServiceError> {
+    let path = plist_path(home, &spec.label);
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|source| ServiceError::PlistWrite {
+            path: path.clone(),
+            source,
+        })?;
+    }
+
+    std::fs::write(&path, plist::to_plist_xml(spec)).map_err(|source| {
+        ServiceError::PlistWrite {
+            path: path.clone(),
+            source,
+        }
+    })?;
+
+    // Not loaded yet is the normal case on a first install, so ignore this.
+    let _ = launchctl::bootout(uid, &spec.label);
+    launchctl::bootstrap(uid, &path)?;
+
+    println!("installed {} -> {}", spec.label, spec.program.display());
+    Ok(())
+}
+
+pub fn install() -> Result<(), ServiceError> {
+    require_macos()?;
+    let home = home_dir()?;
+    let uid = launchctl::current_uid()?;
+
+    // Resolve both binaries before touching launchd, so a missing pet binary
+    // does not leave a half-registered daemon.
+    let daemon = daemon_spec(&home)?;
+    let pet = pet_spec(&home)?;
+
+    let logs = log_dir(&home);
+    std::fs::create_dir_all(&logs).map_err(|source| ServiceError::LogDirCreate {
+        path: logs.clone(),
+        source,
+    })?;
+
+    install_one(&uid, &home, &daemon)?;
+    install_one(&uid, &home, &pet)?;
+
+    println!("daemon logs: {}", logs.join("daemon.out.log").display());
+    Ok(())
+}
+
+fn uninstall_one(uid: &str, home: &Path, label: &str) -> Result<(), ServiceError> {
+    // Both steps tolerate absence: uninstall must succeed from any state.
+    let _ = launchctl::bootout(uid, label);
+    let _ = std::fs::remove_file(plist_path(home, label));
+    println!("uninstalled {label}");
+    Ok(())
+}
+
+pub fn uninstall() -> Result<(), ServiceError> {
+    require_macos()?;
+    let home = home_dir()?;
+    let uid = launchctl::current_uid()?;
+    uninstall_one(&uid, &home, DAEMON_LABEL)?;
+    uninstall_one(&uid, &home, PET_LABEL)?;
+    Ok(())
+}
+
+/// Empty result means the caller passed an unrecognised target.
+fn labels_for(target: Option<&str>) -> Vec<&'static str> {
+    match target {
+        None => vec![DAEMON_LABEL, PET_LABEL],
+        Some("daemon") => vec![DAEMON_LABEL],
+        Some("pet") => vec![PET_LABEL],
+        Some(_) => vec![],
+    }
+}
+
+fn describe(uid: &str, home: &Path, label: &str) -> String {
+    match launchctl::print(uid, label) {
+        Some(output) => match launchctl::pid_from_print(&output) {
+            Some(pid) => format!("running  pid {pid}"),
+            None => "stopped".to_string(),
+        },
+        None if plist_path(home, label).exists() => "stopped".to_string(),
+        None => "not installed".to_string(),
+    }
+}
+
+pub fn status() -> Result<(), ServiceError> {
+    require_macos()?;
+    let home = home_dir()?;
+    let uid = launchctl::current_uid()?;
+    println!("daemon  {}", describe(&uid, &home, DAEMON_LABEL));
+    println!("pet     {}", describe(&uid, &home, PET_LABEL));
+    Ok(())
+}
+
+pub fn restart(target: Option<&str>) -> Result<(), ServiceError> {
+    require_macos()?;
+    let labels = labels_for(target);
+    if labels.is_empty() {
+        return Err(ServiceError::UnknownTarget {
+            target: target.unwrap_or_default().to_string(),
+        });
+    }
+
+    let uid = launchctl::current_uid()?;
+    for label in labels {
+        launchctl::kickstart(&uid, label)?;
+        println!("restarted {label}");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn restart_target_selects_the_right_labels() {
+        assert_eq!(labels_for(None), vec![DAEMON_LABEL, PET_LABEL]);
+        assert_eq!(labels_for(Some("daemon")), vec![DAEMON_LABEL]);
+        assert_eq!(labels_for(Some("pet")), vec![PET_LABEL]);
+        assert_eq!(labels_for(Some("nonsense")), Vec::<&str>::new());
+    }
 
     fn tempdir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("kaiju-service-test-{tag}"));

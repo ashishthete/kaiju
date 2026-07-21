@@ -158,6 +158,27 @@ enum Commands {
 
     /// Launch the desktop pet companion (separate GUI process)
     Pet,
+
+    /// Manage the launchd agents that start kaiju at login (macOS)
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ServiceAction {
+    /// Register the daemon and pet to start at login
+    Install,
+    /// Remove both launchd agents
+    Uninstall,
+    /// Show whether each agent is running
+    Status,
+    /// Restart an agent (both, if unspecified)
+    Restart {
+        /// Which agent: daemon or pet
+        target: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -232,6 +253,14 @@ async fn main() {
                     .into()),
             }
         }
+        Commands::Service { action } => match action {
+            ServiceAction::Install => service::install().map_err(Into::into),
+            ServiceAction::Uninstall => service::uninstall().map_err(Into::into),
+            ServiceAction::Status => service::status().map_err(Into::into),
+            ServiceAction::Restart { target } => {
+                service::restart(target.as_deref()).map_err(Into::into)
+            }
+        },
     };
 
     if let Err(e) = result {
