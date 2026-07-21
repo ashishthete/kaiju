@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 /// One launchd user agent.
+#[derive(Debug)]
 pub struct ServiceSpec {
     pub label: String,
     pub program: PathBuf,
