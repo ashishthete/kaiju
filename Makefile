@@ -2,7 +2,7 @@
 # Run `make help` to list available targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help build test fmt fmt-check lint check daemon cli install smoke clean
+.PHONY: help build test fmt fmt-check lint check daemon cli install install-service smoke clean
 
 KAIJU_URL ?= http://127.0.0.1:7800
 
@@ -37,6 +37,12 @@ cli: ## Run the CLI; pass args via ARGS, e.g. make cli ARGS="list"
 
 install: ## Install the kaiju CLI onto your PATH
 	cargo install --path crates/kaiju-cli
+
+install-service: ## Install daemon + pet + CLI and start them at login (macOS)
+	cargo install --path crates/kaiju-daemon
+	cargo install --path crates/kaiju-pet-shell
+	cargo install --path crates/kaiju-cli
+	kaiju service install
 
 smoke: ## API contract smoke test (boots a throwaway daemon, no agent CLIs)
 	./scripts/smoke.sh
