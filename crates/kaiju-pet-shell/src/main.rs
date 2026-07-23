@@ -22,6 +22,10 @@ mod macos {
     // window position only at rest, so opening/closing the panel never overwrites
     // the remembered spot with a transient panel origin.
     static AT_REST: AtomicBool = AtomicBool::new(true);
+    // Whether the panel is currently ignoring cursor events (clicks passing
+    // through to whatever is behind it). Tracked so the 30Hz ticker only calls
+    // into the window when the state actually changes.
+    static IGNORING_CURSOR: AtomicBool = AtomicBool::new(false);
 
     tauri_panel! {
         panel!(KaijuPanel {
@@ -145,7 +149,15 @@ mod macos {
         let origin = new_origin_anchoring_pet(&window, scale, width, height);
 
         // Persist the resting position only while collapsed (see AT_REST).
-        AT_REST.store(mode == "collapsed", Ordering::SeqCst);
+        let collapsed = mode == "collapsed";
+        AT_REST.store(collapsed, Ordering::SeqCst);
+
+        // An expanded panel is interactive UI everywhere, so it must capture
+        // clicks at once rather than waiting for the click-through ticker's next
+        // poll. (The ticker resumes pass-through once collapsed again.)
+        if !collapsed && IGNORING_CURSOR.swap(false, Ordering::SeqCst) {
+            let _ = window.set_ignore_cursor_events(false);
+        }
 
         // Resize through Tauri so WKWebView's autoresizing machinery updates
         // its layout viewport. Calling NSPanel::setContentSize directly leaves
@@ -287,6 +299,40 @@ mod macos {
         });
     }
 
+    /// Lets clicks fall through the panel's empty area to whatever is behind it,
+    /// while keeping the character itself clickable (poke, drag, reply button).
+    ///
+    /// The panel is a 188pt transparent square but the character only fills a
+    /// centred ellipse of it; without this, the transparent corners still eat
+    /// every click, which is maddening for an always-on-top window. While the
+    /// panel is expanded (a reply/attention UI, not at rest) the whole surface
+    /// must stay clickable, so we only pass clicks through when collapsed.
+    fn update_click_through(
+        window: &tauri::WebviewWindow,
+        cursor: tauri::LogicalPosition<f64>,
+        origin: tauri::LogicalPosition<f64>,
+        size: tauri::LogicalSize<f64>,
+    ) {
+        // Cursor position within the panel, 0..1 on each axis.
+        let lx = (cursor.x - origin.x) / size.width.max(1.0);
+        let ly = (cursor.y - origin.y) / size.height.max(1.0);
+
+        // Ellipse hugging the character: centred slightly low, freeing the
+        // corners where the panel is always transparent.
+        let ex = (lx - 0.5) / 0.44;
+        let ey = (ly - 0.55) / 0.47;
+        let over_character = ex * ex + ey * ey <= 1.0;
+
+        // Capture everything while expanded; otherwise only over the character.
+        let capture = !AT_REST.load(Ordering::SeqCst) || over_character;
+        let want_ignore = !capture;
+
+        // Only touch the window when the state flips — this runs at 30Hz.
+        if IGNORING_CURSOR.swap(want_ignore, Ordering::SeqCst) != want_ignore {
+            let _ = window.set_ignore_cursor_events(want_ignore);
+        }
+    }
+
     /// Drives the pet's animation clock and cursor tracking from Rust.
     ///
     /// Two reasons this cannot live in the webview:
@@ -322,6 +368,8 @@ mod macos {
             let size = size.to_logical::<f64>(scale);
             let center_x = origin.x + size.width / 2.0;
             let center_y = origin.y + size.height / 2.0;
+
+            update_click_through(&window, cursor, origin, size);
 
             // Normalise over a few panel-widths so the head turns for cursors
             // near the pet and saturates for ones far away.
