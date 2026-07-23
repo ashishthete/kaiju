@@ -278,12 +278,57 @@ async fn health() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
+/// Port the pet's singleton guard holds for its process lifetime
+/// (`kaiju-pet-shell` `SINGLETON_PORT`). Kept in sync by hand — the daemon does
+/// not depend on the pet crate.
+const PET_SINGLETON_PORT: u16 = 52789;
+
+/// Terminate a running pet so a fresh one can take its place.
+///
+/// The pet holds `PET_SINGLETON_PORT` for its whole life, so whoever holds that
+/// port is the pet. Kill it (SIGTERM), then wait for the port to free — up to
+/// ~2s — so the replacement can bind it. macOS only, which is all the pet runs
+/// on; a no-op elsewhere.
+fn kill_existing_pet() {
+    use std::net::TcpListener;
+    use std::process::Command;
+    use std::time::Duration;
+
+    let port = PET_SINGLETON_PORT;
+    if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+        return; // nobody holds it — no pet running
+    }
+
+    if let Ok(out) = Command::new("lsof")
+        .args(["-ti", &format!("tcp:{port}")])
+        .output()
+    {
+        for pid in String::from_utf8_lossy(&out.stdout).split_whitespace() {
+            let _ = Command::new("kill").arg(pid).status();
+        }
+    }
+
+    // The replacement cannot bind until the OS releases the port.
+    for _ in 0..20 {
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 /// `POST /pet/launch` — spawn the desktop pet companion (`kaiju-pet-shell`),
 /// pointing it back at this daemon via `KAIJU_URL`. The pet is an optional local
 /// GUI process; we shell out to a fixed binary name (no user input, no injection)
 /// so the daemon takes no GUI dependency. Prefers a binary sitting next to the
 /// daemon (dev target dir / install dir), else falls back to a PATH lookup.
 async fn launch_pet() -> impl IntoResponse {
+    // A pet may already be running yet be invisible — vanished, wedged, or just
+    // tucked off the edge of the screen. The button's job is "give me a working
+    // pet now", so kill any existing instance and start fresh rather than
+    // spawning a doomed second process that the pet's singleton guard rejects.
+    let _ = tokio::task::spawn_blocking(kill_existing_pet).await;
+
     let port = std::env::var("KAIJU_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
