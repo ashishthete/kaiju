@@ -97,16 +97,37 @@ mod macos {
         ex * ex + ey * ey <= 1.0
     }
 
+    /// Capture radius around the unread badge: its 13.5pt visual radius plus a
+    /// small pad so the cursor doesn't flicker at the rim.
+    const BADGE_CAPTURE_RADIUS: f64 = 15.5;
+
+    /// Centre of the unread badge (.status-dot, 27pt circle at right:2%/top:-4%
+    /// of the 104pt pet box) for a given panel size. The badge floats just off
+    /// the blob's top-right shoulder, outside the pet ellipse.
+    fn badge_center(panel: (f64, f64)) -> (f64, f64) {
+        (
+            panel.0 - 7.0 - 2.08 - 13.5,
+            panel.1 - 5.0 - 104.0 - 4.16 + 13.5,
+        )
+    }
+
+    fn inside_badge(panel: (f64, f64), x: f64, y: f64) -> bool {
+        let (cx, cy) = badge_center(panel);
+        let (dx, dy) = (x - cx, y - cy);
+        dx * dx + dy * dy <= BADGE_CAPTURE_RADIUS * BADGE_CAPTURE_RADIUS
+    }
+
     /// Whether a cursor at (x, y) logical pt from the panel's top-left is over
     /// interactive UI for the given mode — i.e. the panel must capture clicks.
     fn capture_region_contains(mode: PanelMode, x: f64, y: f64) -> bool {
+        let panel = mode.size();
         match mode {
             PanelMode::Expanded => true,
-            PanelMode::Collapsed => inside_pet_ellipse(mode.size(), x, y),
+            PanelMode::Collapsed => inside_pet_ellipse(panel, x, y) || inside_badge(panel, x, y),
             PanelMode::Attention => {
                 let (x0, y0, x1, y1) = ATTENTION_BANNER;
                 let over_banner = x >= x0 && x <= x1 && y >= y0 && y <= y1;
-                over_banner || inside_pet_ellipse(mode.size(), x, y)
+                over_banner || inside_pet_ellipse(panel, x, y) || inside_badge(panel, x, y)
             }
         }
     }
@@ -691,9 +712,9 @@ mod macos {
     mod tests {
         use super::*;
 
-        // Badge circle from ui/index.html: .status-dot 27x27 at right:14%/top:12%
+        // Badge circle from ui/index.html: .status-dot 27x27 at right:2%/top:-4%
         // of the 104pt pet box, which spans (21..125, 23..127) in a 132pt panel.
-        const BADGE_CENTER: (f64, f64) = (96.94, 48.98);
+        const BADGE_CENTER: (f64, f64) = (109.42, 32.34);
         const BADGE_R: f64 = 13.5;
 
         #[test]
