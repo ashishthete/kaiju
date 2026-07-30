@@ -573,11 +573,12 @@
         event.preventDefault();
         openMenu(event.clientX, event.clientY);
       });
-      // Dismiss on: click anywhere outside the menu, Escape, or the cursor
-      // leaving the panel entirely (covers "clicked another app's window").
+      // Dismiss on: click anywhere outside the menu, or the Rust ticker
+      // noticing the cursor left the panel (clicks on other windows and key
+      // events never reach this non-key panel, so the ticker is the only
+      // reliable outside-dismiss signal).
       document.addEventListener('mousedown', (event) => { if (!event.target.closest('#menu')) closeMenu(); });
-      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenu(); });
-      document.documentElement.addEventListener('mouseleave', closeMenu);
+      listen('kaiju:menu-close', () => ui.menu.classList.remove('open'));
       $('#dashboard').addEventListener('click', () => { invoke('open_dashboard'); closeMenu(); });
       $('#quit').addEventListener('click', () => invoke('quit'));
 

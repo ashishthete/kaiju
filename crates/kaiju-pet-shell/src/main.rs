@@ -126,6 +126,19 @@ mod macos {
         menu_open || capture_region_contains(mode, x, y)
     }
 
+    /// Grace margin around the panel before an open menu auto-closes. Clicks
+    /// on other windows and Escape can never reach this non-key panel, so the
+    /// cursor wandering off IS the dismiss signal; the margin forgives small
+    /// overshoots at the panel edge.
+    const MENU_CLOSE_MARGIN: f64 = 24.0;
+
+    fn menu_should_auto_close(cursor: (f64, f64), origin: (f64, f64), size: (f64, f64)) -> bool {
+        cursor.0 < origin.0 - MENU_CLOSE_MARGIN
+            || cursor.0 > origin.0 + size.0 + MENU_CLOSE_MARGIN
+            || cursor.1 < origin.1 - MENU_CLOSE_MARGIN
+            || cursor.1 > origin.1 + size.1 + MENU_CLOSE_MARGIN
+    }
+
     /// Whether a cursor at (x, y) logical pt from the panel's top-left is over
     /// interactive UI for the given mode — i.e. the panel must capture clicks.
     fn capture_region_contains(mode: PanelMode, x: f64, y: f64) -> bool {
@@ -490,6 +503,20 @@ mod macos {
 
             update_click_through(&window, cursor, origin);
 
+            // The only reliable dismiss signal for the right-click menu is the
+            // cursor leaving the panel (see MENU_CLOSE_MARGIN). Clear the flag
+            // here first so click-through resumes even if the webview lags.
+            if MENU_OPEN.load(Ordering::SeqCst)
+                && menu_should_auto_close(
+                    (cursor.x, cursor.y),
+                    (origin.x, origin.y),
+                    (size.width, size.height),
+                )
+            {
+                MENU_OPEN.store(false, Ordering::SeqCst);
+                let _ = app.emit("kaiju:menu-close", ());
+            }
+
             // Normalise over a few panel-widths so the head turns for cursors
             // near the pet and saturates for ones far away.
             let span = (size.width.max(size.height) * 3.0).max(1.0);
@@ -808,6 +835,19 @@ mod macos {
             // dismiss-click can reach the webview.
             assert!(should_capture(true, PanelMode::Collapsed, 2.0, 2.0));
             assert!(should_capture(true, PanelMode::Attention, 20.0, 200.0));
+        }
+
+        #[test]
+        fn menu_auto_closes_only_when_cursor_leaves_the_panel() {
+            let origin = (100.0, 100.0);
+            let size = (132.0, 132.0);
+            // Anywhere over the panel, or within the grace margin: stays open.
+            assert!(!menu_should_auto_close((150.0, 150.0), origin, size));
+            assert!(!menu_should_auto_close((90.0, 100.0), origin, size));
+            assert!(!menu_should_auto_close((232.0 + 20.0, 150.0), origin, size));
+            // Clearly away from the panel: close.
+            assert!(menu_should_auto_close((60.0, 150.0), origin, size));
+            assert!(menu_should_auto_close((150.0, 300.0), origin, size));
         }
 
         #[test]
