@@ -16,14 +16,13 @@ cargo run -p kaiju-pet-shell
 The shell defaults to `http://127.0.0.1:7800`. Override it with `KAIJU_URL`;
 set `KAIJU_TOKEN` when the daemon requires a bearer token.
 
-- Drag the character to move the panel. Every character reacts while dragging;
-  Optimus transforms into the truck while driving.
-- Blob is the default character and changes motion for idle, working, waiting,
-  stuck, limited, error, completed, and offline states.
-- Click a character to poke it, double-click to spin it, or click rapidly to
-  trigger an annoyed reaction. Click Optimus to toggle robot/truck form.
+- Drag the character to move the panel; it reacts while dragging.
+- Blob is the only character for now and changes motion for idle, working,
+  waiting, stuck, limited, error, completed, and offline states.
+- Click the character to poke it, double-click to spin it, or click rapidly to
+  trigger an annoyed reaction.
 - Click the status badge to open the agent bubble.
-- Right-click for character selection, dashboard, and Quit.
+- Right-click for dashboard and Quit.
 - Click the reply field for temporary keyboard focus. Send, Escape, or blur
   returns the panel to passive non-keyable mode.
 
@@ -99,5 +98,5 @@ cargo check -p kaiju-pet-shell -p kaiju-pet
 The full-screen proof and final shell use the same panel class and flags. The
 proof was manually verified visible/clickable over a full-screen Space and
 across Spaces without activating the app. The final shell was also exercised
-for robot/truck toggle, native dragging, 420x540 expansion, daemon data/logs,
-and reply-field focus while the prior app remained frontmost.
+for native dragging, 420x540 expansion, daemon data/logs, and reply-field
+focus while the prior app remained frontmost.

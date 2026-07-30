@@ -1,5 +1,5 @@
-// LottiePet — drives a single-loop Lottie character (e.g. the blue blob) with the
-// same interface PetEngine exposes, so index.html can treat both uniformly:
+// LottiePet — drives a single-loop Lottie character (e.g. the blue blob) with
+// the controller interface index.html expects:
 //   mount(host, def) · setReduced(bool) · setState(name) · trigger(name)
 //   setMood(name, ms) · clearMood()
 //

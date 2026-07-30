@@ -16,6 +16,6 @@
   },
   "bundle": {
     "active": false,
-    "icon": ["ui/assets/optimus-prime-v2.png"]
+    "icon": ["ui/assets/blob-icon.png"]
   }
 }
