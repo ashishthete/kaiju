@@ -18,10 +18,6 @@ mod macos {
 
     const PANEL_LABEL: &str = "kaiju-pet";
     static REPLY_MODE: AtomicBool = AtomicBool::new(false);
-    // True only while the pet is collapsed (its resting size). We persist the
-    // window position only at rest, so opening/closing the panel never overwrites
-    // the remembered spot with a transient panel origin.
-    static AT_REST: AtomicBool = AtomicBool::new(true);
     // Whether the panel is currently ignoring cursor events (clicks passing
     // through to whatever is behind it). Tracked so the 30Hz ticker only calls
     // into the window when the state actually changes.
@@ -220,12 +216,8 @@ mod macos {
 
     #[tauri::command]
     fn set_panel_mode(mode: String, app: tauri::AppHandle) -> Result<(), String> {
-        let (width, height) = match mode.as_str() {
-            "collapsed" => (188.0, 188.0),
-            "attention" => (380.0, 270.0),
-            "expanded" => (420.0, 540.0),
-            _ => return Err("unknown panel mode".to_string()),
-        };
+        let panel_mode = PanelMode::parse(&mode).ok_or_else(|| "unknown panel mode".to_string())?;
+        let (width, height) = panel_mode.size();
         let window = app
             .get_webview_window(PANEL_LABEL)
             .ok_or_else(|| "pet webview is unavailable".to_string())?;
@@ -236,14 +228,15 @@ mod macos {
         let scale = window.scale_factor().unwrap_or(1.0);
         let origin = new_origin_anchoring_pet(&window, scale, width, height);
 
-        // Persist the resting position only while collapsed (see AT_REST).
-        let collapsed = mode == "collapsed";
-        AT_REST.store(collapsed, Ordering::SeqCst);
+        // Persist the resting position only while collapsed (see the Moved
+        // handler in setup).
+        PANEL_MODE.store(panel_mode.as_u8(), Ordering::SeqCst);
 
         // An expanded panel is interactive UI everywhere, so it must capture
-        // clicks at once rather than waiting for the click-through ticker's next
-        // poll. (The ticker resumes pass-through once collapsed again.)
-        if !collapsed && IGNORING_CURSOR.swap(false, Ordering::SeqCst) {
+        // clicks at once rather than waiting for the click-through ticker's
+        // next poll. Collapsed/attention capture is re-evaluated by the ticker
+        // within one 33ms tick.
+        if panel_mode == PanelMode::Expanded && IGNORING_CURSOR.swap(false, Ordering::SeqCst) {
             let _ = window.set_ignore_cursor_events(false);
         }
 
@@ -387,32 +380,17 @@ mod macos {
         });
     }
 
-    /// Lets clicks fall through the panel's empty area to whatever is behind it,
-    /// while keeping the character itself clickable (poke, drag, reply button).
-    ///
-    /// The panel is a 188pt transparent square but the character only fills a
-    /// centred ellipse of it; without this, the transparent corners still eat
-    /// every click, which is maddening for an always-on-top window. While the
-    /// panel is expanded (a reply/attention UI, not at rest) the whole surface
-    /// must stay clickable, so we only pass clicks through when collapsed.
+    /// Lets clicks fall through the panel's empty area to whatever is behind
+    /// it, while keeping the interactive UI clickable: the blob + its unread
+    /// badge while collapsed, plus the banner in attention mode. An expanded
+    /// panel is interactive everywhere, so it always captures.
     fn update_click_through(
         window: &tauri::WebviewWindow,
         cursor: tauri::LogicalPosition<f64>,
         origin: tauri::LogicalPosition<f64>,
-        size: tauri::LogicalSize<f64>,
     ) {
-        // Cursor position within the panel, 0..1 on each axis.
-        let lx = (cursor.x - origin.x) / size.width.max(1.0);
-        let ly = (cursor.y - origin.y) / size.height.max(1.0);
-
-        // Ellipse hugging the character: centred slightly low, freeing the
-        // corners where the panel is always transparent.
-        let ex = (lx - 0.5) / 0.44;
-        let ey = (ly - 0.55) / 0.47;
-        let over_character = ex * ex + ey * ey <= 1.0;
-
-        // Capture everything while expanded; otherwise only over the character.
-        let capture = !AT_REST.load(Ordering::SeqCst) || over_character;
+        let mode = current_mode();
+        let capture = capture_region_contains(mode, cursor.x - origin.x, cursor.y - origin.y);
         let want_ignore = !capture;
 
         // Only touch the window when the state flips — this runs at 30Hz.
@@ -424,7 +402,7 @@ mod macos {
     /// Drives the pet's animation clock and cursor tracking from Rust.
     ///
     /// Two reasons this cannot live in the webview:
-    ///   1. `pointermove` only fires while the cursor is INSIDE the 188pt panel,
+    ///   1. `pointermove` only fires while the cursor is INSIDE the collapsed panel,
     ///      so a webview-side listener can never track the cursor across the
     ///      desktop — which is the whole point of a pet that looks at you.
     ///   2. WebKit throttles `requestAnimationFrame` in a non-activating, non-key
@@ -457,7 +435,7 @@ mod macos {
             let center_x = origin.x + size.width / 2.0;
             let center_y = origin.y + size.height / 2.0;
 
-            update_click_through(&window, cursor, origin, size);
+            update_click_through(&window, cursor, origin);
 
             // Normalise over a few panel-widths so the head turns for cursors
             // near the pet and saturates for ones far away.
@@ -518,9 +496,9 @@ mod macos {
             let top = origin.y as f64 / scale;
             let width = size.width as f64 / scale;
             let height = size.height as f64 / scale;
-            x as f64 >= left - 140.0
+            x as f64 >= left - 100.0
                 && (x as f64) < left + width - 30.0
-                && y as f64 >= top - 140.0
+                && y as f64 >= top - 100.0
                 && (y as f64) < top + height - 30.0
         });
         if still_visible {
@@ -532,8 +510,8 @@ mod macos {
             let size = primary.size();
             let scale = primary.scale_factor();
             return tauri::LogicalPosition::new(
-                (origin.x + size.width as i32) as f64 / scale - 208.0,
-                (origin.y + size.height as i32) as f64 / scale - 208.0,
+                (origin.x + size.width as i32) as f64 / scale - 152.0,
+                (origin.y + size.height as i32) as f64 / scale - 152.0,
             );
         }
         tauri::LogicalPosition::new(80.0, 80.0)
@@ -574,7 +552,10 @@ mod macos {
         let panel = PanelBuilder::<_, KaijuPanel>::new(app.handle(), PANEL_LABEL)
             .url(WebviewUrl::App("index.html".into()))
             .title("Kaiju Pet")
-            .size(Size::Logical(tauri::LogicalSize::new(188.0, 188.0)))
+            .size(Size::Logical(tauri::LogicalSize::new(
+                PanelMode::Collapsed.size().0,
+                PanelMode::Collapsed.size().1,
+            )))
             .no_activate(true)
             .style_mask(StyleMask::empty().nonactivating_panel())
             .collection_behavior(behavior)
@@ -614,7 +595,7 @@ mod macos {
                 if let WindowEvent::Moved(position) = event {
                     // Persist only the resting position; skip the programmatic moves
                     // that opening/closing the panel produces.
-                    if !AT_REST.load(Ordering::SeqCst) {
+                    if current_mode() != PanelMode::Collapsed {
                         return;
                     }
                     let scale = scale_window.scale_factor().unwrap_or(1.0);
@@ -657,7 +638,8 @@ mod macos {
         // Reassert the webview content size after it is ordered front so
         // WebKit receives a non-zero layout viewport on macOS 26.
         if let Some(window) = app.get_webview_window(PANEL_LABEL) {
-            window.set_size(Size::Logical(tauri::LogicalSize::new(188.0, 188.0)))?;
+            let (width, height) = PanelMode::Collapsed.size();
+            window.set_size(Size::Logical(tauri::LogicalSize::new(width, height)))?;
             window.set_position(Position::Logical(initial_position))?;
             eprintln!(
                 "KAIJU_WINDOW visible={} position={:?} size={:?}",
@@ -766,7 +748,11 @@ mod macos {
 
         #[test]
         fn panel_mode_round_trips() {
-            for mode in [PanelMode::Collapsed, PanelMode::Attention, PanelMode::Expanded] {
+            for mode in [
+                PanelMode::Collapsed,
+                PanelMode::Attention,
+                PanelMode::Expanded,
+            ] {
                 assert_eq!(PanelMode::from_u8(mode.as_u8()), mode);
             }
             assert_eq!(PanelMode::parse("collapsed"), Some(PanelMode::Collapsed));
