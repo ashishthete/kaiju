@@ -187,6 +187,7 @@ pub const PAGE: &str = r#"<!doctype html>
   }
 
   .counts { display: flex; gap: .4rem; flex-wrap: wrap; }
+  .trends { margin-top: .35rem; font-size: .72rem; color: var(--muted, #8aa39a); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill {
     padding: .2rem .6rem;
     border-radius: 999px;
@@ -1106,6 +1107,7 @@ pub const PAGE: &str = r#"<!doctype html>
     <div id="rail">
       <div id="rail-header">
         <div class="counts" id="counts"></div>
+        <div class="trends" id="trends" title="Finished runs (completion rate, est. cost) over trailing windows"></div>
       </div>
       <div id="agent-list">
         <div id="rows"></div>

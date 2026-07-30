@@ -4,6 +4,7 @@
 //! monitor as a library so they can be exercised by integration tests. The
 //! `kaiju-daemon` binary is a thin wrapper around [`server::run`].
 
+pub mod analytics;
 pub mod api;
 pub mod auth;
 pub mod batch;

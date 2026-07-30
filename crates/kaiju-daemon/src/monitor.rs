@@ -272,13 +272,29 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
     activity.retain(|id, _| live.contains(id.as_str()));
 }
 
+/// How often the persisted-log retention purge runs.
+const LOG_PURGE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+
 /// Run the monitor loop forever, polling every `interval`.
 pub async fn run_monitor(state: AppState, interval: Duration) {
     debug!("monitor started, interval={:?}", interval);
     let mut activity: HashMap<String, OutputActivity> = HashMap::new();
+    let mut last_purge: Option<std::time::Instant> = None;
     loop {
         tokio::time::sleep(interval).await;
         poll_once(&state, &mut activity);
+
+        // Rotate persisted logs and analytics records past retention, daily.
+        if last_purge.is_none_or(|at| at.elapsed() >= LOG_PURGE_INTERVAL) {
+            let logs = crate::logstore::purge_expired();
+            let records = crate::analytics::prune_expired();
+            if logs > 0 || records > 0 {
+                tracing::info!(
+                    "log rotation: removed {logs} expired log file(s), {records} analytics record(s)"
+                );
+            }
+            last_purge = Some(std::time::Instant::now());
+        }
     }
 }
 

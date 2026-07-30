@@ -44,6 +44,7 @@ pub fn routes() -> Router<AppState> {
             "/assets/dashboard-utils.js",
             get(crate::dashboard::dashboard_utils_js),
         )
+        .route("/analytics", get(get_analytics))
         .route("/settings", get(get_settings).put(put_settings))
         .route("/pair", get(crate::pair_api::pair_page))
         .route("/pair/code", post(crate::pair_api::pair_code))
@@ -245,6 +246,11 @@ impl From<&kaiju_core::agent::Agent> for AgentResponse {
 }
 
 /// `GET /settings` — the current daemon defaults (Preferences).
+/// `GET /analytics` — finished-run summaries over trailing 7/45-day windows.
+async fn get_analytics() -> impl IntoResponse {
+    Json(serde_json::json!({ "windows": crate::analytics::summary() }))
+}
+
 async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
     let snapshot = state.settings.read().expect("settings lock").clone();
     Json(snapshot)
@@ -636,7 +642,8 @@ async fn delete_agent(State(state): State<AppState>, Path(id): Path<String>) -> 
                 tracing::warn!("failed to clean up worktree for agent {id}: {e}");
             }
         }
-        crate::logstore::remove(&id);
+        // The persisted log is intentionally kept (analytics); the monitor's
+        // retention purge deletes it once it ages out.
     }
 
     match state.store.remove(&id) {

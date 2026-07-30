@@ -710,9 +710,32 @@ async function refresh() {
   });
 })();
 
+// Finished-run trends from /analytics (7d / 45d windows). Slow-moving data, so
+// it refreshes on its own minute cadence, not the 2s fleet poll.
+async function refreshTrends() {
+  const el = document.getElementById("trends");
+  if (!el) return;
+  try {
+    const res = await api("/analytics");
+    const windows = (await res.json()).windows || [];
+    el.textContent = windows
+      .filter(w => w.runs > 0)
+      .map(w => {
+        const done = Math.round((w.completed / w.runs) * 100);
+        const cost = w.estimated_cost_usd ? " · $" + w.estimated_cost_usd.toFixed(2) : "";
+        return `${w.days}d: ${w.runs} runs · ${done}% done${cost}`;
+      })
+      .join("  —  ");
+  } catch (e) {
+    el.textContent = "";
+  }
+}
+
 initNotify();
 refresh();
 schedulePoll();
+refreshTrends();
+setInterval(refreshTrends, 60000);
 
 // --- Device pairing ---
 

@@ -91,16 +91,24 @@ impl AgentStore {
     }
 
     pub fn update_status(&self, id: &str, status: AgentStatus) -> bool {
-        let updated = {
+        let (updated, finished) = {
             let mut agents = self.agents.write().unwrap();
             match agents.get_mut(id) {
                 Some(agent) => {
+                    let was_terminal = agent.status.is_terminal();
                     agent.update_status(status);
-                    true
+                    // The first transition into a terminal status is the end of
+                    // the run — snapshot it for analytics.
+                    let finished =
+                        (!was_terminal && agent.status.is_terminal()).then(|| agent.clone());
+                    (true, finished)
                 }
-                None => false,
+                None => (false, None),
             }
         };
+        if let Some(agent) = finished {
+            crate::analytics::record(&agent);
+        }
         if updated {
             self.persist();
         }
