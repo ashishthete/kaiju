@@ -26,6 +26,94 @@ mod macos {
     // through to whatever is behind it). Tracked so the 30Hz ticker only calls
     // into the window when the state actually changes.
     static IGNORING_CURSOR: AtomicBool = AtomicBool::new(false);
+    /// Current panel mode, written by `set_panel_mode` and read by the
+    /// click-through ticker and the position-persistence handler.
+    static PANEL_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0); // PanelMode::Collapsed
+
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum PanelMode {
+        Collapsed,
+        Attention,
+        Expanded,
+    }
+
+    impl PanelMode {
+        fn parse(mode: &str) -> Option<Self> {
+            match mode {
+                "collapsed" => Some(Self::Collapsed),
+                "attention" => Some(Self::Attention),
+                "expanded" => Some(Self::Expanded),
+                _ => None,
+            }
+        }
+
+        /// Panel size per mode in logical pt.
+        fn size(self) -> (f64, f64) {
+            match self {
+                Self::Collapsed => (132.0, 132.0),
+                Self::Attention => (330.0, 216.0),
+                Self::Expanded => (420.0, 540.0),
+            }
+        }
+
+        fn as_u8(self) -> u8 {
+            match self {
+                Self::Collapsed => 0,
+                Self::Attention => 1,
+                Self::Expanded => 2,
+            }
+        }
+
+        fn from_u8(value: u8) -> Self {
+            match value {
+                1 => Self::Attention,
+                2 => Self::Expanded,
+                _ => Self::Collapsed,
+            }
+        }
+    }
+
+    fn current_mode() -> PanelMode {
+        PanelMode::from_u8(PANEL_MODE.load(Ordering::SeqCst))
+    }
+
+    // --- Click-capture geometry -------------------------------------------
+    // These constants mirror ui/index.html (.pet-wrap, .status-dot,
+    // .attention). If that CSS layout moves, update these together with the
+    // tests at the bottom of this module.
+
+    /// Ellipse hugging the blob plus its badge and pill, in logical pt.
+    /// The 104pt pet box sits at right:7 bottom:5 of the panel.
+    const PET_ELLIPSE_RADII: (f64, f64) = (48.0, 52.0);
+
+    /// Attention banner: left:8 right:8 top:10 min-height:92 in a 330pt panel.
+    const ATTENTION_BANNER: (f64, f64, f64, f64) = (8.0, 10.0, 322.0, 102.0);
+
+    /// Centre of the pet box for a given panel size (right:7 bottom:5, 104pt).
+    fn pet_ellipse_center(panel: (f64, f64)) -> (f64, f64) {
+        (panel.0 - 7.0 - 52.0, panel.1 - 5.0 - 52.0)
+    }
+
+    fn inside_pet_ellipse(panel: (f64, f64), x: f64, y: f64) -> bool {
+        let (cx, cy) = pet_ellipse_center(panel);
+        let ex = (x - cx) / PET_ELLIPSE_RADII.0;
+        let ey = (y - cy) / PET_ELLIPSE_RADII.1;
+        ex * ex + ey * ey <= 1.0
+    }
+
+    /// Whether a cursor at (x, y) logical pt from the panel's top-left is over
+    /// interactive UI for the given mode — i.e. the panel must capture clicks.
+    fn capture_region_contains(mode: PanelMode, x: f64, y: f64) -> bool {
+        match mode {
+            PanelMode::Expanded => true,
+            PanelMode::Collapsed => inside_pet_ellipse(mode.size(), x, y),
+            PanelMode::Attention => {
+                let (x0, y0, x1, y1) = ATTENTION_BANNER;
+                let over_banner = x >= x0 && x <= x1 && y >= y0 && y <= y1;
+                over_banner || inside_pet_ellipse(mode.size(), x, y)
+            }
+        }
+    }
 
     tauri_panel! {
         panel!(KaijuPanel {
@@ -615,6 +703,77 @@ mod macos {
             .setup(setup)
             .run(tauri::generate_context!())
             .expect("failed to run Kaiju pet shell");
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        // Badge circle from ui/index.html: .status-dot 27x27 at right:14%/top:12%
+        // of the 104pt pet box, which spans (21..125, 23..127) in a 132pt panel.
+        const BADGE_CENTER: (f64, f64) = (96.94, 48.98);
+        const BADGE_R: f64 = 13.5;
+
+        #[test]
+        fn collapsed_captures_badge_center_and_rim() {
+            let (cx, cy) = BADGE_CENTER;
+            let points = [
+                (cx, cy),
+                (cx + BADGE_R, cy),
+                (cx - BADGE_R, cy),
+                (cx, cy + BADGE_R),
+                (cx, cy - BADGE_R),
+            ];
+            for (x, y) in points {
+                assert!(
+                    capture_region_contains(PanelMode::Collapsed, x, y),
+                    "badge point ({x}, {y}) must be clickable"
+                );
+            }
+        }
+
+        #[test]
+        fn collapsed_captures_blob_and_pill_center() {
+            assert!(capture_region_contains(PanelMode::Collapsed, 73.0, 75.0));
+            // .state-label pill centre (visual overlap only; pill ignores pointers)
+            assert!(capture_region_contains(PanelMode::Collapsed, 73.0, 112.5));
+        }
+
+        #[test]
+        fn collapsed_passes_clicks_through_at_corners() {
+            for (x, y) in [(2.0, 2.0), (130.0, 2.0), (2.0, 130.0), (130.0, 130.0)] {
+                assert!(
+                    !capture_region_contains(PanelMode::Collapsed, x, y),
+                    "corner ({x}, {y}) must pass through"
+                );
+            }
+        }
+
+        #[test]
+        fn attention_captures_banner_and_pet_only() {
+            // Banner centre and pet centre capture…
+            assert!(capture_region_contains(PanelMode::Attention, 165.0, 56.0));
+            assert!(capture_region_contains(PanelMode::Attention, 271.0, 159.0));
+            // …but the empty bottom-left of the 330x216 panel passes through.
+            assert!(!capture_region_contains(PanelMode::Attention, 20.0, 200.0));
+        }
+
+        #[test]
+        fn expanded_captures_everywhere() {
+            assert!(capture_region_contains(PanelMode::Expanded, 0.0, 0.0));
+            assert!(capture_region_contains(PanelMode::Expanded, 419.0, 539.0));
+        }
+
+        #[test]
+        fn panel_mode_round_trips() {
+            for mode in [PanelMode::Collapsed, PanelMode::Attention, PanelMode::Expanded] {
+                assert_eq!(PanelMode::from_u8(mode.as_u8()), mode);
+            }
+            assert_eq!(PanelMode::parse("collapsed"), Some(PanelMode::Collapsed));
+            assert_eq!(PanelMode::parse("attention"), Some(PanelMode::Attention));
+            assert_eq!(PanelMode::parse("expanded"), Some(PanelMode::Expanded));
+            assert_eq!(PanelMode::parse("bogus"), None);
+        }
     }
 }
 
