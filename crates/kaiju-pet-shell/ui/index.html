@@ -157,7 +157,7 @@
       .attention strong { display:block; margin-bottom:3px; font-size:13px; }
       .attention span { display:block; max-width:240px; color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-      .menu { position:absolute; display:none; z-index:20; min-width:150px; padding:6px; border:1px solid rgba(255,255,255,.22); border-radius:11px; background:rgba(24,31,29,.98); box-shadow:0 14px 35px rgba(0,0,0,.5); }
+      .menu { position:absolute; display:none; z-index:20; min-width:120px; padding:6px; border:1px solid rgba(255,255,255,.22); border-radius:11px; background:rgba(24,31,29,.98); box-shadow:0 14px 35px rgba(0,0,0,.5); }
       .menu.open { display:block; }
       .menu button { display:block; width:100%; padding:7px 10px; border:0; border-radius:7px; text-align:left; background:transparent; cursor:pointer; }
       .menu button:hover { background:rgba(255,255,255,.1); }
@@ -364,7 +364,7 @@
         mode = next;
         document.body.classList.toggle('expanded', next === 'expanded');
         document.body.classList.toggle('attention', next === 'attention');
-        ui.menu.classList.remove('open');
+        closeMenu();
         await invoke('set_panel_mode', { mode: next });
       }
 
@@ -555,15 +555,30 @@
       ui.reply.addEventListener('blur', () => invoke('end_reply').catch(() => {}));
       ui.send.addEventListener('click', submitReply);
 
+      // While the menu is open the Rust ticker captures the whole panel
+      // (see set_menu_open), so the dismiss interactions below actually
+      // receive their events instead of falling through the transparent area.
+      function openMenu(x, y) {
+        ui.menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - 128))}px`;
+        ui.menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - 92))}px`;
+        ui.menu.classList.add('open');
+        invoke('set_menu_open', { open: true }).catch(() => {});
+      }
+      function closeMenu() {
+        if (!ui.menu.classList.contains('open')) return;
+        ui.menu.classList.remove('open');
+        invoke('set_menu_open', { open: false }).catch(() => {});
+      }
       document.addEventListener('contextmenu', (event) => {
         event.preventDefault();
-        const x = Math.min(event.clientX, window.innerWidth - 158);
-        const y = Math.min(event.clientY, window.innerHeight - 116);
-        ui.menu.style.left = `${Math.max(4, x)}px`; ui.menu.style.top = `${Math.max(4, y)}px`;
-        ui.menu.classList.add('open');
+        openMenu(event.clientX, event.clientY);
       });
-      document.addEventListener('mousedown', (event) => { if (!event.target.closest('#menu')) ui.menu.classList.remove('open'); });
-      $('#dashboard').addEventListener('click', () => invoke('open_dashboard'));
+      // Dismiss on: click anywhere outside the menu, Escape, or the cursor
+      // leaving the panel entirely (covers "clicked another app's window").
+      document.addEventListener('mousedown', (event) => { if (!event.target.closest('#menu')) closeMenu(); });
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenu(); });
+      document.documentElement.addEventListener('mouseleave', closeMenu);
+      $('#dashboard').addEventListener('click', () => { invoke('open_dashboard'); closeMenu(); });
       $('#quit').addEventListener('click', () => invoke('quit'));
 
       // KAIJU_PET_CHARACTER=<id> selects a character at launch, overriding the

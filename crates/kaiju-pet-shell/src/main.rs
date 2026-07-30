@@ -117,6 +117,15 @@ mod macos {
         dx * dx + dy * dy <= BADGE_CAPTURE_RADIUS * BADGE_CAPTURE_RADIUS
     }
 
+    /// While the right-click menu is open the whole panel must capture, so the
+    /// mousedown that dismisses the menu reaches the webview instead of
+    /// falling through to the window behind.
+    static MENU_OPEN: AtomicBool = AtomicBool::new(false);
+
+    fn should_capture(menu_open: bool, mode: PanelMode, x: f64, y: f64) -> bool {
+        menu_open || capture_region_contains(mode, x, y)
+    }
+
     /// Whether a cursor at (x, y) logical pt from the panel's top-left is over
     /// interactive UI for the given mode — i.e. the panel must capture clicks.
     fn capture_region_contains(mode: PanelMode, x: f64, y: f64) -> bool {
@@ -200,6 +209,24 @@ mod macos {
     #[tauri::command]
     fn retry_now(state: tauri::State<'_, ShellState>) -> Result<(), String> {
         state.commands.send(UiCmd::RetryNow).map_err(command_error)
+    }
+
+    /// The webview reports the right-click menu opening/closing so the
+    /// click-through ticker can capture the whole panel while it is open
+    /// (a dismiss-click must not fall through to the window behind). The
+    /// capture flips immediately on open: the menu can render outside the
+    /// blob's capture region, and a 33ms ticker lag there would eat the
+    /// very first click on it.
+    #[tauri::command]
+    fn set_menu_open(open: bool, app: tauri::AppHandle) {
+        MENU_OPEN.store(open, Ordering::SeqCst);
+        if open {
+            if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+                if IGNORING_CURSOR.swap(false, Ordering::SeqCst) {
+                    let _ = window.set_ignore_cursor_events(false);
+                }
+            }
+        }
     }
 
     #[tauri::command]
@@ -411,7 +438,12 @@ mod macos {
         origin: tauri::LogicalPosition<f64>,
     ) {
         let mode = current_mode();
-        let capture = capture_region_contains(mode, cursor.x - origin.x, cursor.y - origin.y);
+        let capture = should_capture(
+            MENU_OPEN.load(Ordering::SeqCst),
+            mode,
+            cursor.x - origin.x,
+            cursor.y - origin.y,
+        );
         let want_ignore = !capture;
 
         // Only touch the window when the state flips — this runs at 30Hz.
@@ -697,6 +729,7 @@ mod macos {
                 retry_now,
                 send_reply,
                 set_panel_mode,
+                set_menu_open,
                 begin_reply,
                 end_reply,
                 open_dashboard,
@@ -765,6 +798,16 @@ mod macos {
         fn expanded_captures_everywhere() {
             assert!(capture_region_contains(PanelMode::Expanded, 0.0, 0.0));
             assert!(capture_region_contains(PanelMode::Expanded, 419.0, 539.0));
+        }
+
+        #[test]
+        fn open_menu_captures_the_whole_panel() {
+            // A collapsed corner normally passes through…
+            assert!(!should_capture(false, PanelMode::Collapsed, 2.0, 2.0));
+            // …but must capture while the context menu is open, so the
+            // dismiss-click can reach the webview.
+            assert!(should_capture(true, PanelMode::Collapsed, 2.0, 2.0));
+            assert!(should_capture(true, PanelMode::Attention, 20.0, 200.0));
         }
 
         #[test]
