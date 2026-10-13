@@ -5,7 +5,6 @@ use kaiju_core::{NexusError, Result};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
-use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use crate::api;
@@ -178,15 +177,21 @@ pub fn build_app(state: AppState) -> Router {
             crate::auth::require_auth,
         ))
         .with_state(state)
-        .layer(CorsLayer::permissive())
         .layer(tower_http::trace::TraceLayer::new_for_http())
 }
 
 /// Start the HTTP API server.
 pub async fn run(addr: SocketAddr) -> Result<()> {
-    let store = AgentStore::load_or_new(state_file_path())?;
+    let state_path = state_file_path();
+    // With no state file there is no record of which worktrees are in use (a
+    // first run, or a throwaway daemon pointed at a fresh `KAIJU_STATE`), so
+    // "unreferenced" proves nothing — don't delete anything.
+    let has_state = state_path.exists();
+    let store = AgentStore::load_or_new(state_path)?;
     reconcile_startup(&store);
-    sweep_orphaned_worktrees(&store);
+    if has_state {
+        sweep_orphaned_worktrees(&store);
+    }
     let tasks = TaskStore::load_or_new(tasks_file_path())?;
     let mut state = AppState::with_stores(store, tasks);
     state.auth_token = std::env::var("KAIJU_TOKEN").ok().filter(|t| !t.is_empty());
@@ -221,8 +226,23 @@ pub async fn run(addr: SocketAddr) -> Result<()> {
     Ok(())
 }
 
-/// Internal helper: start an agent's tmux session and CLI process.
+/// Start an agent's tmux session and CLI process. A launch that fails marks the
+/// agent `Error`, so it doesn't sit in `Starting` forever.
 pub fn start_agent_internal(state: &AppState, id: &str) -> Result<()> {
+    let result = launch_agent(state, id);
+    if let Err(e) = &result {
+        let launch_failed = !matches!(
+            e,
+            NexusError::AgentNotFound(_) | NexusError::AlreadyRunning(_)
+        );
+        if launch_failed {
+            state.store.update_status(id, AgentStatus::Error);
+        }
+    }
+    result
+}
+
+fn launch_agent(state: &AppState, id: &str) -> Result<()> {
     let agent = state
         .store
         .get(id)

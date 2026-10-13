@@ -8,6 +8,7 @@ pub mod gemini;
 pub mod limit;
 mod pricing;
 mod registry;
+mod shell;
 mod trust;
 
 pub use registry::AdapterRegistry;

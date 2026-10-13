@@ -20,11 +20,14 @@ impl Adapter for CodexAdapter {
 
     fn build_command(&self, config: &AgentConfig) -> String {
         let bin = crate::binary::agent_binary("KAIJU_CODEX_BIN", "codex");
-        let mut cmd = format!("cd {} && {bin}", config.workspace.display());
+        let mut cmd = format!(
+            "cd {} && {bin}",
+            crate::shell::quote(&config.workspace.to_string_lossy())
+        );
 
         let model = config.model.as_deref().or(self.default_model());
         if let Some(model) = model {
-            cmd.push_str(&format!(" --model {model}"));
+            cmd.push_str(&format!(" --model {}", crate::shell::quote(model)));
         }
 
         // Codex requires options BEFORE the positional prompt
@@ -45,6 +48,9 @@ impl Adapter for CodexAdapter {
     fn parse_output(&self, output: &str) -> ParsedOutput {
         let mut result = ParsedOutput::default();
         let prompt = controlling_prompt_line(output);
+        // Completion/error words are common in ordinary tool output ("0 failed",
+        // "Finished dev profile"), so only the last few lines count.
+        let recent = kaiju_core::adapter::tail_lines(output.trim_end(), 5);
 
         // Waiting on the user (approval/prompt) is the actionable current state.
         if ends_with_selection_menu(output)
@@ -53,9 +59,9 @@ impl Adapter for CodexAdapter {
             || prompt.contains("confirm")
         {
             result.status = Some(AgentStatus::WaitingForInput);
-        } else if output.contains("completed") || output.contains("Finished") {
+        } else if recent.contains("completed") || recent.contains("Finished") {
             result.status = Some(AgentStatus::Completed);
-        } else if output.contains("error") || output.contains("failed") {
+        } else if recent.contains("error") || recent.contains("failed") {
             result.status = Some(AgentStatus::Error);
         } else if output.contains("running")
             || output.contains("processing")
@@ -92,6 +98,27 @@ impl Adapter for CodexAdapter {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn stale_failure_words_in_scrollback_are_not_a_status() {
+        let mut output =
+            String::from("test result: ok. 12 passed; 0 failed\nFinished dev profile\n");
+        for i in 0..10 {
+            output.push_str(&format!("editing file {i}\n"));
+        }
+        assert_eq!(CodexAdapter.parse_output(&output).status, None);
+    }
+
+    #[test]
+    fn workspace_with_a_space_is_quoted() {
+        let mut config = make_config();
+        config.workspace = PathBuf::from("/home/user/My Projects/app");
+        let cmd = CodexAdapter.build_command(&config);
+        assert!(
+            cmd.starts_with("cd '/home/user/My Projects/app' && "),
+            "{cmd}"
+        );
+    }
 
     fn make_config() -> AgentConfig {
         AgentConfig {

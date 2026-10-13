@@ -83,10 +83,13 @@ pub async fn terminal_ws(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
     peer: Option<ConnectInfo<SocketAddr>>,
+    headers: axum::http::HeaderMap,
     Path(id): Path<String>,
     Query(q): Query<TokenQuery>,
 ) -> Response {
-    let loopback = crate::auth::is_loopback(peer.map(|c| c.0));
+    // WebSockets are not subject to the same-origin policy, so the cross-site
+    // check in `trusted_loopback` is what keeps another site's page out.
+    let loopback = crate::auth::trusted_loopback(peer.map(|c| c.0), &headers);
     let tokens = state.devices.read().expect("devices lock").tokens();
     if !crate::auth::authorized(loopback, &state.auth_token, &tokens, q.token.as_deref()) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();

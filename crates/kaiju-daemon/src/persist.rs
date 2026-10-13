@@ -6,7 +6,9 @@
 use kaiju_core::Result;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::io::Write;
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
 
 /// Load a list of items from a JSON file. A missing file is not an error — it
 /// yields an empty list (first run).
@@ -19,17 +21,40 @@ pub fn load<T: DeserializeOwned>(path: &Path) -> Result<Vec<T>> {
     Ok(items)
 }
 
-/// Write a list of items to a JSON file atomically (write to a temp file, then
-/// rename) so a crash mid-write cannot corrupt the existing state.
+static SAVE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Take the persistence lock. A store holds it across "snapshot, then save" so
+/// concurrent mutations can't write their snapshots out of order (which would
+/// leave an older state on disk).
+pub fn lock() -> MutexGuard<'static, ()> {
+    SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Write a list of items to a JSON file atomically (write to a temp file, sync,
+/// then rename) so a crash mid-write cannot corrupt the existing state. The
+/// file holds prompts and paths, so on unix it is created owner-only (0600).
 pub fn save<T: Serialize>(path: &Path, items: &[T]) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let data = serde_json::to_string_pretty(items)?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, data)?;
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    write_synced(&tmp, data.as_bytes())?;
     std::fs::rename(&tmp, path)?;
     Ok(())
+}
+
+fn write_synced(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(data)?;
+    file.sync_all()
 }
 
 #[cfg(test)]
@@ -61,6 +86,22 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let agents: Vec<Agent> = load(&path).unwrap();
         assert!(agents.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saved_file_is_owner_only_and_leaves_no_temp_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = temp_path("mode");
+
+        save(&path, &[sample_agent()]).unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+        assert!(!tmp.exists());
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

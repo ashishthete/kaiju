@@ -49,6 +49,12 @@ pub async fn upload_file(
     let write = (|| -> std::io::Result<()> {
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
+            // Uploads are scratch input for the agent: ignore the whole
+            // directory so they don't dirty the workspace or get promoted.
+            let ignore = parent.join(".gitignore");
+            if !ignore.exists() {
+                std::fs::write(ignore, "*\n")?;
+            }
         }
         std::fs::write(&dest, &body)
     })();

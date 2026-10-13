@@ -46,9 +46,15 @@ function fmtDuration(s) {
   return Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
 }
 
-// Escape HTML-significant characters for safe interpolation into innerHTML.
+// Escape HTML-significant characters for safe interpolation into innerHTML,
+// including quotes so the result is also safe inside an attribute value.
 function esc(s) {
-  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return (s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // Colorize a unified diff (added/removed/hunk/file lines) as HTML spans.

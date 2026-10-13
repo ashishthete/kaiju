@@ -20,11 +20,14 @@ impl Adapter for GeminiAdapter {
         // `-i` seeds the first prompt and stays interactive, unlike `-p` which
         // runs once and exits. Keeps the session alive for supervision.
         let bin = crate::binary::agent_binary("KAIJU_GEMINI_BIN", "gemini");
-        let mut cmd = format!("cd {} && {bin}", config.workspace.display());
+        let mut cmd = format!(
+            "cd {} && {bin}",
+            crate::shell::quote(&config.workspace.to_string_lossy())
+        );
 
         let model = config.model.as_deref().or(self.default_model());
         if let Some(model) = model {
-            cmd.push_str(&format!(" --model {model}"));
+            cmd.push_str(&format!(" --model {}", crate::shell::quote(model)));
         }
 
         if let Some(prompt) = &config.prompt {
@@ -43,10 +46,13 @@ impl Adapter for GeminiAdapter {
         let mut result = ParsedOutput::default();
         let last = last_non_empty_line(output);
         let prompt = controlling_prompt_line(output);
+        // "Done"/"completed" appear in ordinary tool output, so only the last
+        // few lines count as a completion signal.
+        let recent = kaiju_core::adapter::tail_lines(output.trim_end(), 5);
 
         if ends_with_selection_menu(output) || looks_like_prompt(prompt) {
             result.status = Some(AgentStatus::WaitingForInput);
-        } else if output.contains("Done") || output.contains("completed") {
+        } else if recent.contains("Done") || recent.contains("completed") {
             result.status = Some(AgentStatus::Completed);
         } else if last.contains("ERROR") || last.contains("error:") {
             result.status = Some(AgentStatus::Error);

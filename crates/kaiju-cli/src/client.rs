@@ -139,7 +139,7 @@ impl NexusClient {
                 .filter(|a| {
                     matches!(
                         a.status.as_str(),
-                        "starting" | "running" | "waitingforinput" | "stuck"
+                        "starting" | "running" | "waitingforinput" | "stuck" | "limited"
                     )
                 })
                 .collect()

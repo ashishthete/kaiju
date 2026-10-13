@@ -157,7 +157,7 @@
       .attention strong { display:block; margin-bottom:3px; font-size:13px; }
       .attention span { display:block; max-width:240px; color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-      .menu { position:absolute; display:none; z-index:20; min-width:120px; padding:6px; border:1px solid rgba(255,255,255,.22); border-radius:11px; background:rgba(24,31,29,.98); box-shadow:0 14px 35px rgba(0,0,0,.5); }
+      .menu { position:absolute; display:none; z-index:20; min-width:120px; padding:6px; font-size:12px; white-space:nowrap; border:1px solid rgba(255,255,255,.22); border-radius:11px; background:rgba(24,31,29,.98); box-shadow:0 14px 35px rgba(0,0,0,.5); }
       .menu.open { display:block; }
       .menu button { display:block; width:100%; padding:7px 10px; border:0; border-radius:7px; text-align:left; background:transparent; cursor:pointer; }
       .menu button:hover { background:rgba(255,255,255,.1); }
@@ -558,16 +558,27 @@
       // While the menu is open the Rust ticker captures the whole panel
       // (see set_menu_open), so the dismiss interactions below actually
       // receive their events instead of falling through the transparent area.
+      // Reports are chained so a close immediately followed by an open (a
+      // right-click while the menu is already showing) can never reach Rust
+      // out of order and leave the capture flag disagreeing with the menu.
+      let menuReport = Promise.resolve();
+      function reportMenuOpen(open) {
+        menuReport = menuReport.then(() => invoke('set_menu_open', { open }).catch(() => {}));
+      }
       function openMenu(x, y) {
-        ui.menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - 128))}px`;
-        ui.menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - 92))}px`;
+        // Show first, then clamp against the measured size so the menu always
+        // fits inside the (small, clipping) collapsed panel.
         ui.menu.classList.add('open');
-        invoke('set_menu_open', { open: true }).catch(() => {});
+        const maxLeft = window.innerWidth - ui.menu.offsetWidth - 4;
+        const maxTop = window.innerHeight - ui.menu.offsetHeight - 4;
+        ui.menu.style.left = `${Math.max(4, Math.min(x, maxLeft))}px`;
+        ui.menu.style.top = `${Math.max(4, Math.min(y, maxTop))}px`;
+        reportMenuOpen(true);
       }
       function closeMenu() {
         if (!ui.menu.classList.contains('open')) return;
         ui.menu.classList.remove('open');
-        invoke('set_menu_open', { open: false }).catch(() => {});
+        reportMenuOpen(false);
       }
       document.addEventListener('contextmenu', (event) => {
         event.preventDefault();

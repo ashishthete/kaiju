@@ -104,7 +104,8 @@ fn post_to_slack(url: String, text: String) {
             .send()
             .await
         {
-            warn!("slack notification failed: {e}");
+            // The webhook URL is a secret; keep it out of the logs.
+            warn!("slack notification failed: {}", e.without_url());
         }
     });
 }

@@ -232,6 +232,7 @@ impl WorktreeManager {
         }
         let commit = Command::new("git")
             .args(["-C", &dir, "commit", "-m", message])
+            .env("LC_ALL", "C") // the "nothing to commit" check reads git's text
             .output()
             .map_err(NexusError::Io)?;
         if commit.status.success() {
@@ -256,6 +257,7 @@ impl WorktreeManager {
         let dir = workspace.display().to_string();
         let out = Command::new("git")
             .args(["-C", &dir, "merge", "--no-ff", "-m", message, branch])
+            .env("LC_ALL", "C") // the "Already up to date" check reads git's text
             .output()
             .map_err(NexusError::Io)?;
         if out.status.success() {
@@ -265,13 +267,28 @@ impl WorktreeManager {
             } else {
                 Ok(MergeOutcome::Merged)
             }
-        } else {
+        } else if workspace_has_merge_in_progress(&dir) {
             let _ = Command::new("git")
                 .args(["-C", &dir, "merge", "--abort"])
                 .output();
             Ok(MergeOutcome::Conflict)
+        } else {
+            // Git refused before merging (no identity, unknown branch, ...).
+            Err(NexusError::Git(format!(
+                "git merge failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            )))
         }
     }
+}
+
+/// True while a merge is stopped on conflicts (`MERGE_HEAD` exists).
+fn workspace_has_merge_in_progress(dir: &str) -> bool {
+    Command::new("git")
+        .args(["-C", dir, "rev-parse", "-q", "--verify", "MERGE_HEAD"])
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -319,6 +336,20 @@ mod tests {
 
         // Idempotent: a second call on an existing repo is a no-op success.
         WorktreeManager::ensure_repo(&dir).unwrap();
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn merge_that_git_refuses_is_an_error_not_a_conflict() {
+        let dir = std::env::temp_dir().join(format!("kaiju-merge-fail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        WorktreeManager::ensure_repo(&dir).unwrap();
+
+        // No such branch: git never starts a merge, so there is nothing to
+        // resolve by hand — it must not be reported as a conflict.
+        let outcome = WorktreeManager::merge_branch(&dir, "kaiju/missing", "merge");
+        assert!(matches!(outcome, Err(NexusError::Git(_))));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

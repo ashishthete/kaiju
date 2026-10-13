@@ -132,10 +132,28 @@ pub struct Agent {
     pub last_fired: Option<DateTime<Utc>>,
 }
 
+/// Build the tmux session name for an agent. A custom agent type is a free-form
+/// executable name, and tmux reads `.` and `:` in a target as window/pane
+/// separators, so anything outside `[A-Za-z0-9_-]` is replaced with `_`.
+fn session_name_for(agent_type: &str, id: &str) -> String {
+    let safe_type: String = agent_type
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let short_id: String = id.chars().take(8).collect();
+    format!("kaiju-{safe_type}-{short_id}")
+}
+
 impl Agent {
     pub fn new(config: AgentConfig) -> Self {
         let id = Uuid::new_v4().to_string();
-        let session_name = format!("kaiju-{}-{}", config.agent_type, &id[..8]);
+        let session_name = session_name_for(&config.agent_type.to_string(), &id);
         let now = Utc::now();
 
         Self {
@@ -202,6 +220,20 @@ impl Agent {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn session_name_replaces_tmux_target_separators() {
+        let name = session_name_for("my.tool:v2/bin", "1a2b3c4d-5e6f");
+        assert_eq!(name, "kaiju-my_tool_v2_bin-1a2b3c4d");
+    }
+
+    #[test]
+    fn session_name_keeps_builtin_types_unchanged() {
+        assert_eq!(
+            session_name_for("claude", "abcdef1234"),
+            "kaiju-claude-abcdef12"
+        );
+    }
 
     #[test]
     fn agent_type_roundtrip() {

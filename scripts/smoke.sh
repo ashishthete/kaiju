@@ -10,7 +10,8 @@
 #
 set -euo pipefail
 
-PORT="${KAIJU_PORT:-7811}"
+# Deliberately not KAIJU_PORT: that is the real daemon's port.
+PORT="${KAIJU_SMOKE_PORT:-7811}"
 URL="http://127.0.0.1:${PORT}"
 TMP="$(mktemp -d)"
 STATE="$TMP/state.json"
@@ -42,7 +43,14 @@ expect_status() {
 }
 
 echo "Starting daemon on :$PORT ..."
-KAIJU_PORT="$PORT" KAIJU_STATE="$STATE" cargo run -q -p kaiju-daemon >"$LOG" 2>&1 &
+if curl -sf "$URL/health" >/dev/null 2>&1; then
+  echo "something already answers on :$PORT — refusing to test against it" >&2
+  exit 1
+fi
+# Point every store at the temp dir so the real ~/.kaiju is never touched.
+KAIJU_PORT="$PORT" KAIJU_STATE="$STATE" KAIJU_TASKS="$TMP/tasks.json" \
+  KAIJU_WORKTREES="$TMP/worktrees" KAIJU_CONFIG="$TMP/config.json" \
+  KAIJU_DEVICES="$TMP/devices.json" KAIJU_LOGS="$TMP/logs" cargo run -q -p kaiju-daemon >"$LOG" 2>&1 &
 DAEMON_PID=$!
 for _ in $(seq 1 60); do
   curl -sf "$URL/health" >/dev/null 2>&1 && break || sleep 1

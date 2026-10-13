@@ -59,9 +59,19 @@ impl TmuxManager {
     }
 
     /// Send a command to a tmux session (simulates typing + Enter).
+    ///
+    /// The text is sent literally (`-l --`) so input that happens to be a tmux
+    /// key name ("Enter", "Up", "C-c") or starts with `-` is typed, not
+    /// interpreted. Enter follows as a separate key press.
     pub fn send_keys(session_name: &str, command: &str) -> Result<()> {
+        Self::run_send_keys(session_name, &["-l", "--", command])?;
+        Self::run_send_keys(session_name, &["Enter"])
+    }
+
+    fn run_send_keys(session_name: &str, keys: &[&str]) -> Result<()> {
         let output = Command::new("tmux")
-            .args(["send-keys", "-t", session_name, command, "Enter"])
+            .args(["send-keys", "-t", session_name])
+            .args(keys)
             .output()?;
 
         if !output.status.success() {

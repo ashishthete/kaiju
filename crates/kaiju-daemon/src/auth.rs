@@ -43,6 +43,58 @@ pub fn is_loopback(peer: Option<SocketAddr>) -> bool {
     peer.is_none_or(|addr| addr.ip().is_loopback())
 }
 
+/// The host name of a `Host` header value, without its port. Pure.
+fn host_name(host: &str) -> &str {
+    if let Some(rest) = host.strip_prefix('[') {
+        return rest.split(']').next().unwrap_or(rest);
+    }
+    match host.rsplit_once(':') {
+        Some((name, port)) if port.bytes().all(|b| b.is_ascii_digit()) => name,
+        _ => host,
+    }
+}
+
+/// Pure: could this request have been sent by a web page on another site?
+///
+/// A browser on the host machine is a loopback peer, so loopback trust alone
+/// would hand the whole API to any page the user visits. Two signals rule that
+/// out:
+/// - `Origin`, when present, must be this server (same authority as `Host`) —
+///   browsers always send it on cross-site writes and WebSocket handshakes.
+/// - `Host` must be an IP literal or `localhost`, which a DNS-rebinding page
+///   (whose `Origin` *does* match its own `Host`) can never present.
+///
+/// Non-browser clients (the CLI, the pet) send no `Origin` and pass.
+pub fn is_cross_site(origin: Option<&str>, host: Option<&str>) -> bool {
+    let Some(host) = host else {
+        // No Host header: only the in-process test harness. A browser always
+        // sends one, so an Origin without it cannot be verified.
+        return origin.is_some();
+    };
+    let name = host_name(host);
+    let host_is_literal =
+        name.eq_ignore_ascii_case("localhost") || name.parse::<std::net::IpAddr>().is_ok();
+    if !host_is_literal {
+        return true;
+    }
+    match origin {
+        None => false,
+        Some(origin) => {
+            let authority = origin
+                .strip_prefix("http://")
+                .or_else(|| origin.strip_prefix("https://"));
+            !authority.is_some_and(|a| a.eq_ignore_ascii_case(host))
+        }
+    }
+}
+
+/// True when the request may use loopback trust: the peer is loopback and the
+/// request is not a cross-site one relayed through the host's browser.
+pub fn trusted_loopback(peer: Option<SocketAddr>, headers: &axum::http::HeaderMap) -> bool {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    is_loopback(peer) && !is_cross_site(header("origin"), header("host"))
+}
+
 /// Extract the token from an `Authorization: Bearer <token>` header value.
 pub fn bearer(header: Option<&str>) -> Option<&str> {
     let value = header?.strip_prefix("Bearer ")?;
@@ -83,7 +135,7 @@ pub async fn require_auth(
     // Compute an owned token string before `req` is moved into `next.run`.
     let provided_owned: Option<String> = bearer(header).map(|s| s.to_string());
 
-    let loopback = is_loopback(peer.map(|c| c.0));
+    let loopback = trusted_loopback(peer.map(|c| c.0), req.headers());
     let tokens = state.devices.read().expect("devices lock").tokens();
 
     if authorized(
@@ -163,6 +215,74 @@ mod tests {
             Ipv4Addr::new(192, 168, 1, 5).into(),
             7800
         ))));
+    }
+
+    #[test]
+    fn same_origin_and_headerless_requests_are_not_cross_site() {
+        // CLI / pet: no Origin at all.
+        assert!(!is_cross_site(None, Some("127.0.0.1:7800")));
+        assert!(!is_cross_site(None, None));
+        // The dashboard talking to its own server.
+        assert!(!is_cross_site(
+            Some("http://127.0.0.1:7800"),
+            Some("127.0.0.1:7800")
+        ));
+        assert!(!is_cross_site(
+            Some("http://localhost:7800"),
+            Some("LOCALHOST:7800")
+        ));
+        assert!(!is_cross_site(
+            Some("http://[::1]:7800"),
+            Some("[::1]:7800")
+        ));
+        assert!(!is_cross_site(
+            Some("http://192.168.1.5:7800"),
+            Some("192.168.1.5:7800")
+        ));
+    }
+
+    #[test]
+    fn another_sites_page_is_cross_site() {
+        assert!(is_cross_site(
+            Some("https://evil.example"),
+            Some("127.0.0.1:7800")
+        ));
+        // Same host, different port is a different origin.
+        assert!(is_cross_site(
+            Some("http://127.0.0.1:3000"),
+            Some("127.0.0.1:7800")
+        ));
+        // Sandboxed iframes and file:// pages send the literal "null".
+        assert!(is_cross_site(Some("null"), Some("127.0.0.1:7800")));
+        assert!(is_cross_site(Some("https://evil.example"), None));
+    }
+
+    #[test]
+    fn dns_rebinding_host_is_cross_site() {
+        // A rebinding page's Origin matches its own Host, so the Host name is
+        // what gives it away.
+        assert!(is_cross_site(
+            Some("http://evil.example:7800"),
+            Some("evil.example:7800")
+        ));
+        assert!(is_cross_site(None, Some("evil.example:7800")));
+    }
+
+    #[test]
+    fn trusted_loopback_requires_a_same_site_request() {
+        use axum::http::HeaderMap;
+        use std::net::Ipv4Addr;
+        let local = Some(SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 50000));
+        let remote = Some(SocketAddr::new(Ipv4Addr::new(192, 168, 1, 9).into(), 50000));
+
+        let mut own = HeaderMap::new();
+        own.insert("host", "127.0.0.1:7800".parse().unwrap());
+        assert!(trusted_loopback(local, &own));
+        assert!(!trusted_loopback(remote, &own));
+
+        let mut foreign = own.clone();
+        foreign.insert("origin", "https://evil.example".parse().unwrap());
+        assert!(!trusted_loopback(local, &foreign));
     }
 
     #[test]

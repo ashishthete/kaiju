@@ -54,6 +54,7 @@ impl AgentStore {
         let Some(path) = &self.path else {
             return;
         };
+        let _guard = persist::lock();
         let snapshot: Vec<Agent> = {
             let agents = self.agents.read().unwrap();
             agents.values().cloned().collect()

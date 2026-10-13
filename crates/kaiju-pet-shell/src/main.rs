@@ -1,6 +1,6 @@
 #[cfg(target_os = "macos")]
 mod macos {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
     use std::sync::mpsc::Sender;
     use std::sync::{Arc, Mutex};
 
@@ -24,7 +24,7 @@ mod macos {
     static IGNORING_CURSOR: AtomicBool = AtomicBool::new(false);
     /// Current panel mode, written by `set_panel_mode` and read by the
     /// click-through ticker and the position-persistence handler.
-    static PANEL_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0); // PanelMode::Collapsed
+    static PANEL_MODE: AtomicU8 = AtomicU8::new(0); // PanelMode::Collapsed
 
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     enum PanelMode {
@@ -78,16 +78,23 @@ mod macos {
     // .attention). If that CSS layout moves, update these together with the
     // tests at the bottom of this module.
 
-    /// Ellipse hugging the blob plus its badge and pill, in logical pt.
-    /// The 104pt pet box sits at right:7 bottom:5 of the panel.
+    /// The pet box (.pet-wrap): a 104pt square at right:7 bottom:5 of the panel.
+    const PET_BOX: f64 = 104.0;
+    const PET_INSET_RIGHT: f64 = 7.0;
+    const PET_INSET_BOTTOM: f64 = 5.0;
+
+    /// Ellipse hugging the blob and its pill, in logical pt.
     const PET_ELLIPSE_RADII: (f64, f64) = (48.0, 52.0);
 
     /// Attention banner: left:8 right:8 top:10 min-height:92 in a 330pt panel.
     const ATTENTION_BANNER: (f64, f64, f64, f64) = (8.0, 10.0, 322.0, 102.0);
 
-    /// Centre of the pet box for a given panel size (right:7 bottom:5, 104pt).
+    /// Centre of the pet box for a given panel size.
     fn pet_ellipse_center(panel: (f64, f64)) -> (f64, f64) {
-        (panel.0 - 7.0 - 52.0, panel.1 - 5.0 - 52.0)
+        (
+            panel.0 - PET_INSET_RIGHT - PET_BOX / 2.0,
+            panel.1 - PET_INSET_BOTTOM - PET_BOX / 2.0,
+        )
     }
 
     fn inside_pet_ellipse(panel: (f64, f64), x: f64, y: f64) -> bool {
@@ -97,18 +104,23 @@ mod macos {
         ex * ex + ey * ey <= 1.0
     }
 
-    /// Capture radius around the unread badge: its 13.5pt visual radius plus a
-    /// small pad so the cursor doesn't flicker at the rim.
-    const BADGE_CAPTURE_RADIUS: f64 = 15.5;
+    /// Visual radius of the unread badge (.status-dot, a 27pt circle).
+    const BADGE_RADIUS: f64 = 13.5;
 
-    /// Centre of the unread badge (.status-dot, 27pt circle at right:2%/top:-4%
-    /// of the 104pt pet box) for a given panel size. The badge floats just off
-    /// the blob's top-right shoulder, outside the pet ellipse.
+    /// Capture radius around the unread badge: its visual radius plus the
+    /// distance the badge can drift from its resting spot. The webview leans
+    /// .pet-wrap toward the cursor (up to ~8pt of translate + rotate at the
+    /// badge while hovering it), so a tight radius would let clicks on the
+    /// visible rim fall through to the window behind.
+    const BADGE_CAPTURE_RADIUS: f64 = BADGE_RADIUS + 8.5;
+
+    /// Centre of the unread badge (right:2%/top:-4% of the pet box) for a
+    /// given panel size. The badge floats just off the blob's top-right
+    /// shoulder, outside the pet ellipse.
     fn badge_center(panel: (f64, f64)) -> (f64, f64) {
-        (
-            panel.0 - 7.0 - 2.08 - 13.5,
-            panel.1 - 5.0 - 104.0 - 4.16 + 13.5,
-        )
+        let right = PET_INSET_RIGHT + 0.02 * PET_BOX;
+        let top = panel.1 - PET_INSET_BOTTOM - PET_BOX - 0.04 * PET_BOX;
+        (panel.0 - right - BADGE_RADIUS, top + BADGE_RADIUS)
     }
 
     fn inside_badge(panel: (f64, f64), x: f64, y: f64) -> bool {
