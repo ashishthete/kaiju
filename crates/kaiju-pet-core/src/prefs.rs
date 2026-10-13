@@ -9,6 +9,7 @@ pub struct WindowPos {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NotifyPrefs {
     pub waitingforinput: bool,
     pub stuck: bool,
@@ -30,6 +31,7 @@ impl Default for NotifyPrefs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Prefs {
     pub daemon_url: String,
     pub window: WindowPos,
@@ -92,6 +94,16 @@ pub fn save(p: &Prefs) -> Result<(), std::io::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn partial_file_keeps_given_fields_and_defaults_the_rest() {
+        let json = r#"{"daemon_url":"http://127.0.0.1:9000","notify":{"stuck":false}}"#;
+        let p: Prefs = serde_json::from_str(json).unwrap();
+        assert_eq!(p.daemon_url, "http://127.0.0.1:9000");
+        assert!(!p.notify.stuck);
+        assert!(p.notify.error);
+        assert_eq!(p.sound, Prefs::default().sound);
+    }
 
     #[test]
     fn defaults_point_at_loopback() {

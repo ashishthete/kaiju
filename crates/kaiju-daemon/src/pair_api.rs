@@ -133,17 +133,14 @@ pub async fn revoke_device(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let removed = {
-        let mut devices = state.devices.write().expect("devices lock");
-        let removed = devices.remove(&id);
-        if removed {
-            let _ = crate::devices::save(&devices);
-        }
-        removed
-    };
-    if removed {
-        StatusCode::NO_CONTENT
-    } else {
-        StatusCode::NOT_FOUND
+    let mut devices = state.devices.write().expect("devices lock");
+    if !devices.remove(&id) {
+        return StatusCode::NOT_FOUND;
     }
+    // A revoke that isn't persisted would silently come back on restart.
+    if let Err(e) = crate::devices::save(&devices) {
+        tracing::error!("failed to persist device revocation: {e}");
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+    StatusCode::NO_CONTENT
 }

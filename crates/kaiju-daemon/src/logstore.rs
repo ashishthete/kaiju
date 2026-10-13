@@ -37,7 +37,7 @@ pub(crate) fn retention() -> Duration {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(DEFAULT_RETENTION_DAYS);
-    Duration::from_secs(days * 24 * 60 * 60)
+    Duration::from_secs(days.saturating_mul(24 * 60 * 60))
 }
 
 /// Persist the latest captured output for `id`. Best-effort: a failure to write

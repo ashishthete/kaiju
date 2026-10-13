@@ -35,11 +35,14 @@ impl Adapter for ClaudeAdapter {
         // alive and can be supervised. The prompt is passed positionally to seed
         // the first turn.
         let bin = crate::binary::agent_binary("KAIJU_CLAUDE_BIN", "claude");
-        let mut cmd = format!("cd {} && {bin}", config.workspace.display());
+        let mut cmd = format!(
+            "cd {} && {bin}",
+            crate::shell::quote(&config.workspace.to_string_lossy())
+        );
 
         let model = config.model.as_deref().or(self.default_model());
         if let Some(model) = model {
-            cmd.push_str(&format!(" --model {model}"));
+            cmd.push_str(&format!(" --model {}", crate::shell::quote(model)));
         }
 
         if let Some(prompt) = &config.prompt {
@@ -71,6 +74,9 @@ impl Adapter for ClaudeAdapter {
 
         let last = last_non_empty_line(output);
         let prompt = controlling_prompt_line(output);
+        // A completion phrase deep in scrollback is stale; only the last few
+        // lines count.
+        let recent = kaiju_core::adapter::tail_lines(output.trim_end(), 5);
 
         // A waiting prompt is the current, actionable state, so it takes
         // priority. A trailing selection menu (question may sit well above it) or
@@ -80,7 +86,7 @@ impl Adapter for ClaudeAdapter {
             || prompt.contains("Do you want")
         {
             result.status = Some(AgentStatus::WaitingForInput);
-        } else if output.contains("Task completed") || output.contains("Done!") {
+        } else if recent.contains("Task completed") || recent.contains("Done!") {
             result.status = Some(AgentStatus::Completed);
         } else if last.contains("Error:") || last.contains("error:") {
             result.status = Some(AgentStatus::Error);
@@ -115,10 +121,10 @@ impl Adapter for ClaudeAdapter {
 
         let mut cmd = format!(
             "cd {} && {bin} -p --output-format stream-json --verbose",
-            config.workspace.display()
+            crate::shell::quote(&config.workspace.to_string_lossy())
         );
         if let Some(model) = config.model.as_deref().or(self.default_model()) {
-            cmd.push_str(&format!(" --model {model}"));
+            cmd.push_str(&format!(" --model {}", crate::shell::quote(model)));
         }
         cmd.push_str(&format!(" '{escaped}'"));
         Some(cmd)
@@ -128,9 +134,12 @@ impl Adapter for ClaudeAdapter {
         // `--continue` reopens the most recent conversation in the working dir.
         // No prompt is seeded — the operator drives the resumed TUI directly.
         let bin = crate::binary::agent_binary("KAIJU_CLAUDE_BIN", "claude");
-        let mut cmd = format!("cd {} && {bin} --continue", config.workspace.display());
+        let mut cmd = format!(
+            "cd {} && {bin} --continue",
+            crate::shell::quote(&config.workspace.to_string_lossy())
+        );
         if let Some(model) = config.model.as_deref().or(self.default_model()) {
-            cmd.push_str(&format!(" --model {model}"));
+            cmd.push_str(&format!(" --model {}", crate::shell::quote(model)));
         }
         for arg in &config.extra_args {
             cmd.push_str(&format!(" {arg}"));
@@ -162,11 +171,12 @@ impl Adapter for ClaudeAdapter {
     fn resume_session_command(&self, config: &AgentConfig, session_id: &str) -> Option<String> {
         let bin = crate::binary::agent_binary("KAIJU_CLAUDE_BIN", "claude");
         let mut cmd = format!(
-            "cd {} && {bin} --resume {session_id}",
-            config.workspace.display()
+            "cd {} && {bin} --resume {}",
+            crate::shell::quote(&config.workspace.to_string_lossy()),
+            crate::shell::quote(session_id)
         );
         if let Some(model) = config.model.as_deref().or(self.default_model()) {
-            cmd.push_str(&format!(" --model {model}"));
+            cmd.push_str(&format!(" --model {}", crate::shell::quote(model)));
         }
         for arg in &config.extra_args {
             cmd.push_str(&format!(" {arg}"));

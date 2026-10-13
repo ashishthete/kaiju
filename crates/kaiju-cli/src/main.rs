@@ -181,6 +181,14 @@ enum ServiceAction {
     },
 }
 
+/// Resolve a workspace argument against the current directory. The daemon has
+/// its own working directory (`/` under launchd), so a relative path like
+/// `./api` must be made absolute before it is sent.
+fn absolute_workspace(workspace: &str) -> std::io::Result<String> {
+    let path = std::path::absolute(workspace)?;
+    Ok(path.display().to_string())
+}
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
@@ -194,22 +202,24 @@ async fn main() {
             prompt,
             isolate,
             batch,
-        } => {
-            let workspace = if workspace == "." {
-                std::env::current_dir().unwrap().display().to_string()
-            } else {
-                workspace
-            };
-            client
-                .start(&agent_type, &workspace, model, prompt, isolate, batch)
-                .await
-        }
+        } => match absolute_workspace(&workspace) {
+            Ok(path) => {
+                client
+                    .start(&agent_type, &path, model, prompt, isolate, batch)
+                    .await
+            }
+            Err(e) => Err(e.into()),
+        },
         Commands::Here { prompt, isolate } => {
             // Default: claude, current directory, optional prompt, auto-started.
-            let workspace = std::env::current_dir().unwrap().display().to_string();
-            client
-                .start("claude", &workspace, None, prompt, isolate, false)
-                .await
+            match absolute_workspace(".") {
+                Ok(path) => {
+                    client
+                        .start("claude", &path, None, prompt, isolate, false)
+                        .await
+                }
+                Err(e) => Err(e.into()),
+            }
         }
         Commands::List { active } => client.list(active).await,
         Commands::Status { id } => client.status(&id).await,
@@ -227,16 +237,14 @@ async fn main() {
             model,
             prompt,
             isolate,
-        } => {
-            let workspace = if workspace == "." {
-                std::env::current_dir().unwrap().display().to_string()
-            } else {
-                workspace
-            };
-            client
-                .submit(&agent_type, &workspace, model, prompt, isolate)
-                .await
-        }
+        } => match absolute_workspace(&workspace) {
+            Ok(path) => {
+                client
+                    .submit(&agent_type, &path, model, prompt, isolate)
+                    .await
+            }
+            Err(e) => Err(e.into()),
+        },
         Commands::Queue => client.queue().await,
         Commands::Cancel { id } => client.cancel_task(&id).await,
         Commands::Pet => {

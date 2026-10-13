@@ -25,10 +25,13 @@ impl Adapter for CustomAdapter {
     fn build_command(&self, config: &AgentConfig) -> String {
         // The custom agent type's name is the executable to run.
         let bin = config.agent_type.to_string();
-        let mut cmd = format!("cd {} && {bin}", config.workspace.display());
+        let mut cmd = format!(
+            "cd {} && {bin}",
+            crate::shell::quote(&config.workspace.to_string_lossy())
+        );
 
         if let Some(model) = &config.model {
-            cmd.push_str(&format!(" --model {model}"));
+            cmd.push_str(&format!(" --model {}", crate::shell::quote(model)));
         }
         if let Some(prompt) = &config.prompt {
             let escaped = prompt.replace('\'', "'\\''");
@@ -43,10 +46,12 @@ impl Adapter for CustomAdapter {
     fn parse_output(&self, output: &str) -> ParsedOutput {
         let mut result = ParsedOutput::default();
         let prompt = controlling_prompt_line(output);
+        // An "error:" line deep in scrollback is stale; only the tail counts.
+        let recent = kaiju_core::adapter::tail_lines(output.trim_end(), 5);
 
         if ends_with_selection_menu(output) || looks_like_prompt(prompt) {
             result.status = Some(AgentStatus::WaitingForInput);
-        } else if output.contains("error:") || output.contains("Error:") {
+        } else if recent.contains("error:") || recent.contains("Error:") {
             result.status = Some(AgentStatus::Error);
         }
         result

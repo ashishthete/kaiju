@@ -46,6 +46,7 @@ impl TaskStore {
         let Some(path) = &self.path else {
             return;
         };
+        let _guard = persist::lock();
         let snapshot: Vec<Task> = {
             let tasks = self.tasks.read().unwrap();
             tasks.values().cloned().collect()

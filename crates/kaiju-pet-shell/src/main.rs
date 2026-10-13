@@ -1,6 +1,6 @@
 #[cfg(target_os = "macos")]
 mod macos {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
     use std::sync::mpsc::Sender;
     use std::sync::{Arc, Mutex};
 
@@ -18,14 +18,153 @@ mod macos {
 
     const PANEL_LABEL: &str = "kaiju-pet";
     static REPLY_MODE: AtomicBool = AtomicBool::new(false);
-    // True only while the pet is collapsed (its resting size). We persist the
-    // window position only at rest, so opening/closing the panel never overwrites
-    // the remembered spot with a transient panel origin.
-    static AT_REST: AtomicBool = AtomicBool::new(true);
     // Whether the panel is currently ignoring cursor events (clicks passing
     // through to whatever is behind it). Tracked so the 30Hz ticker only calls
     // into the window when the state actually changes.
     static IGNORING_CURSOR: AtomicBool = AtomicBool::new(false);
+    /// Current panel mode, written by `set_panel_mode` and read by the
+    /// click-through ticker and the position-persistence handler.
+    static PANEL_MODE: AtomicU8 = AtomicU8::new(0); // PanelMode::Collapsed
+
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum PanelMode {
+        Collapsed,
+        Attention,
+        Expanded,
+    }
+
+    impl PanelMode {
+        fn parse(mode: &str) -> Option<Self> {
+            match mode {
+                "collapsed" => Some(Self::Collapsed),
+                "attention" => Some(Self::Attention),
+                "expanded" => Some(Self::Expanded),
+                _ => None,
+            }
+        }
+
+        /// Panel size per mode in logical pt.
+        fn size(self) -> (f64, f64) {
+            match self {
+                Self::Collapsed => (132.0, 132.0),
+                Self::Attention => (330.0, 216.0),
+                Self::Expanded => (420.0, 540.0),
+            }
+        }
+
+        fn as_u8(self) -> u8 {
+            match self {
+                Self::Collapsed => 0,
+                Self::Attention => 1,
+                Self::Expanded => 2,
+            }
+        }
+
+        fn from_u8(value: u8) -> Self {
+            match value {
+                1 => Self::Attention,
+                2 => Self::Expanded,
+                _ => Self::Collapsed,
+            }
+        }
+    }
+
+    fn current_mode() -> PanelMode {
+        PanelMode::from_u8(PANEL_MODE.load(Ordering::SeqCst))
+    }
+
+    // --- Click-capture geometry -------------------------------------------
+    // These constants mirror ui/index.html (.pet-wrap, .status-dot,
+    // .attention). If that CSS layout moves, update these together with the
+    // tests at the bottom of this module.
+
+    /// The pet box (.pet-wrap): a 104pt square at right:7 bottom:5 of the panel.
+    const PET_BOX: f64 = 104.0;
+    const PET_INSET_RIGHT: f64 = 7.0;
+    const PET_INSET_BOTTOM: f64 = 5.0;
+
+    /// Ellipse hugging the blob and its pill, in logical pt.
+    const PET_ELLIPSE_RADII: (f64, f64) = (48.0, 52.0);
+
+    /// Attention banner: left:8 right:8 top:10 min-height:92 in a 330pt panel.
+    const ATTENTION_BANNER: (f64, f64, f64, f64) = (8.0, 10.0, 322.0, 102.0);
+
+    /// Centre of the pet box for a given panel size.
+    fn pet_ellipse_center(panel: (f64, f64)) -> (f64, f64) {
+        (
+            panel.0 - PET_INSET_RIGHT - PET_BOX / 2.0,
+            panel.1 - PET_INSET_BOTTOM - PET_BOX / 2.0,
+        )
+    }
+
+    fn inside_pet_ellipse(panel: (f64, f64), x: f64, y: f64) -> bool {
+        let (cx, cy) = pet_ellipse_center(panel);
+        let ex = (x - cx) / PET_ELLIPSE_RADII.0;
+        let ey = (y - cy) / PET_ELLIPSE_RADII.1;
+        ex * ex + ey * ey <= 1.0
+    }
+
+    /// Visual radius of the unread badge (.status-dot, a 27pt circle).
+    const BADGE_RADIUS: f64 = 13.5;
+
+    /// Capture radius around the unread badge: its visual radius plus the
+    /// distance the badge can drift from its resting spot. The webview leans
+    /// .pet-wrap toward the cursor (up to ~8pt of translate + rotate at the
+    /// badge while hovering it), so a tight radius would let clicks on the
+    /// visible rim fall through to the window behind.
+    const BADGE_CAPTURE_RADIUS: f64 = BADGE_RADIUS + 8.5;
+
+    /// Centre of the unread badge (right:2%/top:-4% of the pet box) for a
+    /// given panel size. The badge floats just off the blob's top-right
+    /// shoulder, outside the pet ellipse.
+    fn badge_center(panel: (f64, f64)) -> (f64, f64) {
+        let right = PET_INSET_RIGHT + 0.02 * PET_BOX;
+        let top = panel.1 - PET_INSET_BOTTOM - PET_BOX - 0.04 * PET_BOX;
+        (panel.0 - right - BADGE_RADIUS, top + BADGE_RADIUS)
+    }
+
+    fn inside_badge(panel: (f64, f64), x: f64, y: f64) -> bool {
+        let (cx, cy) = badge_center(panel);
+        let (dx, dy) = (x - cx, y - cy);
+        dx * dx + dy * dy <= BADGE_CAPTURE_RADIUS * BADGE_CAPTURE_RADIUS
+    }
+
+    /// While the right-click menu is open the whole panel must capture, so the
+    /// mousedown that dismisses the menu reaches the webview instead of
+    /// falling through to the window behind.
+    static MENU_OPEN: AtomicBool = AtomicBool::new(false);
+
+    fn should_capture(menu_open: bool, mode: PanelMode, x: f64, y: f64) -> bool {
+        menu_open || capture_region_contains(mode, x, y)
+    }
+
+    /// Grace margin around the panel before an open menu auto-closes. Clicks
+    /// on other windows and Escape can never reach this non-key panel, so the
+    /// cursor wandering off IS the dismiss signal; the margin forgives small
+    /// overshoots at the panel edge.
+    const MENU_CLOSE_MARGIN: f64 = 24.0;
+
+    fn menu_should_auto_close(cursor: (f64, f64), origin: (f64, f64), size: (f64, f64)) -> bool {
+        cursor.0 < origin.0 - MENU_CLOSE_MARGIN
+            || cursor.0 > origin.0 + size.0 + MENU_CLOSE_MARGIN
+            || cursor.1 < origin.1 - MENU_CLOSE_MARGIN
+            || cursor.1 > origin.1 + size.1 + MENU_CLOSE_MARGIN
+    }
+
+    /// Whether a cursor at (x, y) logical pt from the panel's top-left is over
+    /// interactive UI for the given mode — i.e. the panel must capture clicks.
+    fn capture_region_contains(mode: PanelMode, x: f64, y: f64) -> bool {
+        let panel = mode.size();
+        match mode {
+            PanelMode::Expanded => true,
+            PanelMode::Collapsed => inside_pet_ellipse(panel, x, y) || inside_badge(panel, x, y),
+            PanelMode::Attention => {
+                let (x0, y0, x1, y1) = ATTENTION_BANNER;
+                let over_banner = x >= x0 && x <= x1 && y >= y0 && y <= y1;
+                over_banner || inside_pet_ellipse(panel, x, y) || inside_badge(panel, x, y)
+            }
+        }
+    }
 
     tauri_panel! {
         panel!(KaijuPanel {
@@ -97,6 +236,24 @@ mod macos {
         state.commands.send(UiCmd::RetryNow).map_err(command_error)
     }
 
+    /// The webview reports the right-click menu opening/closing so the
+    /// click-through ticker can capture the whole panel while it is open
+    /// (a dismiss-click must not fall through to the window behind). The
+    /// capture flips immediately on open: the menu can render outside the
+    /// blob's capture region, and a 33ms ticker lag there would eat the
+    /// very first click on it.
+    #[tauri::command]
+    fn set_menu_open(open: bool, app: tauri::AppHandle) {
+        MENU_OPEN.store(open, Ordering::SeqCst);
+        if open {
+            if let Some(window) = app.get_webview_window(PANEL_LABEL) {
+                if IGNORING_CURSOR.swap(false, Ordering::SeqCst) {
+                    let _ = window.set_ignore_cursor_events(false);
+                }
+            }
+        }
+    }
+
     #[tauri::command]
     fn send_reply(
         id: String,
@@ -132,12 +289,8 @@ mod macos {
 
     #[tauri::command]
     fn set_panel_mode(mode: String, app: tauri::AppHandle) -> Result<(), String> {
-        let (width, height) = match mode.as_str() {
-            "collapsed" => (188.0, 188.0),
-            "attention" => (380.0, 270.0),
-            "expanded" => (420.0, 540.0),
-            _ => return Err("unknown panel mode".to_string()),
-        };
+        let panel_mode = PanelMode::parse(&mode).ok_or_else(|| "unknown panel mode".to_string())?;
+        let (width, height) = panel_mode.size();
         let window = app
             .get_webview_window(PANEL_LABEL)
             .ok_or_else(|| "pet webview is unavailable".to_string())?;
@@ -148,14 +301,15 @@ mod macos {
         let scale = window.scale_factor().unwrap_or(1.0);
         let origin = new_origin_anchoring_pet(&window, scale, width, height);
 
-        // Persist the resting position only while collapsed (see AT_REST).
-        let collapsed = mode == "collapsed";
-        AT_REST.store(collapsed, Ordering::SeqCst);
+        // Persist the resting position only while collapsed (see the Moved
+        // handler in setup).
+        PANEL_MODE.store(panel_mode.as_u8(), Ordering::SeqCst);
 
         // An expanded panel is interactive UI everywhere, so it must capture
-        // clicks at once rather than waiting for the click-through ticker's next
-        // poll. (The ticker resumes pass-through once collapsed again.)
-        if !collapsed && IGNORING_CURSOR.swap(false, Ordering::SeqCst) {
+        // clicks at once rather than waiting for the click-through ticker's
+        // next poll. Collapsed/attention capture is re-evaluated by the ticker
+        // within one 33ms tick.
+        if panel_mode == PanelMode::Expanded && IGNORING_CURSOR.swap(false, Ordering::SeqCst) {
             let _ = window.set_ignore_cursor_events(false);
         }
 
@@ -299,32 +453,22 @@ mod macos {
         });
     }
 
-    /// Lets clicks fall through the panel's empty area to whatever is behind it,
-    /// while keeping the character itself clickable (poke, drag, reply button).
-    ///
-    /// The panel is a 188pt transparent square but the character only fills a
-    /// centred ellipse of it; without this, the transparent corners still eat
-    /// every click, which is maddening for an always-on-top window. While the
-    /// panel is expanded (a reply/attention UI, not at rest) the whole surface
-    /// must stay clickable, so we only pass clicks through when collapsed.
+    /// Lets clicks fall through the panel's empty area to whatever is behind
+    /// it, while keeping the interactive UI clickable: the blob + its unread
+    /// badge while collapsed, plus the banner in attention mode. An expanded
+    /// panel is interactive everywhere, so it always captures.
     fn update_click_through(
         window: &tauri::WebviewWindow,
         cursor: tauri::LogicalPosition<f64>,
         origin: tauri::LogicalPosition<f64>,
-        size: tauri::LogicalSize<f64>,
     ) {
-        // Cursor position within the panel, 0..1 on each axis.
-        let lx = (cursor.x - origin.x) / size.width.max(1.0);
-        let ly = (cursor.y - origin.y) / size.height.max(1.0);
-
-        // Ellipse hugging the character: centred slightly low, freeing the
-        // corners where the panel is always transparent.
-        let ex = (lx - 0.5) / 0.44;
-        let ey = (ly - 0.55) / 0.47;
-        let over_character = ex * ex + ey * ey <= 1.0;
-
-        // Capture everything while expanded; otherwise only over the character.
-        let capture = !AT_REST.load(Ordering::SeqCst) || over_character;
+        let mode = current_mode();
+        let capture = should_capture(
+            MENU_OPEN.load(Ordering::SeqCst),
+            mode,
+            cursor.x - origin.x,
+            cursor.y - origin.y,
+        );
         let want_ignore = !capture;
 
         // Only touch the window when the state flips — this runs at 30Hz.
@@ -336,7 +480,7 @@ mod macos {
     /// Drives the pet's animation clock and cursor tracking from Rust.
     ///
     /// Two reasons this cannot live in the webview:
-    ///   1. `pointermove` only fires while the cursor is INSIDE the 188pt panel,
+    ///   1. `pointermove` only fires while the cursor is INSIDE the collapsed panel,
     ///      so a webview-side listener can never track the cursor across the
     ///      desktop — which is the whole point of a pet that looks at you.
     ///   2. WebKit throttles `requestAnimationFrame` in a non-activating, non-key
@@ -369,7 +513,21 @@ mod macos {
             let center_x = origin.x + size.width / 2.0;
             let center_y = origin.y + size.height / 2.0;
 
-            update_click_through(&window, cursor, origin, size);
+            update_click_through(&window, cursor, origin);
+
+            // The only reliable dismiss signal for the right-click menu is the
+            // cursor leaving the panel (see MENU_CLOSE_MARGIN). Clear the flag
+            // here first so click-through resumes even if the webview lags.
+            if MENU_OPEN.load(Ordering::SeqCst)
+                && menu_should_auto_close(
+                    (cursor.x, cursor.y),
+                    (origin.x, origin.y),
+                    (size.width, size.height),
+                )
+            {
+                MENU_OPEN.store(false, Ordering::SeqCst);
+                let _ = app.emit("kaiju:menu-close", ());
+            }
 
             // Normalise over a few panel-widths so the head turns for cursors
             // near the pet and saturates for ones far away.
@@ -430,9 +588,9 @@ mod macos {
             let top = origin.y as f64 / scale;
             let width = size.width as f64 / scale;
             let height = size.height as f64 / scale;
-            x as f64 >= left - 140.0
+            x as f64 >= left - 100.0
                 && (x as f64) < left + width - 30.0
-                && y as f64 >= top - 140.0
+                && y as f64 >= top - 100.0
                 && (y as f64) < top + height - 30.0
         });
         if still_visible {
@@ -444,8 +602,8 @@ mod macos {
             let size = primary.size();
             let scale = primary.scale_factor();
             return tauri::LogicalPosition::new(
-                (origin.x + size.width as i32) as f64 / scale - 208.0,
-                (origin.y + size.height as i32) as f64 / scale - 208.0,
+                (origin.x + size.width as i32) as f64 / scale - 152.0,
+                (origin.y + size.height as i32) as f64 / scale - 152.0,
             );
         }
         tauri::LogicalPosition::new(80.0, 80.0)
@@ -486,7 +644,10 @@ mod macos {
         let panel = PanelBuilder::<_, KaijuPanel>::new(app.handle(), PANEL_LABEL)
             .url(WebviewUrl::App("index.html".into()))
             .title("Kaiju Pet")
-            .size(Size::Logical(tauri::LogicalSize::new(188.0, 188.0)))
+            .size(Size::Logical(tauri::LogicalSize::new(
+                PanelMode::Collapsed.size().0,
+                PanelMode::Collapsed.size().1,
+            )))
             .no_activate(true)
             .style_mask(StyleMask::empty().nonactivating_panel())
             .collection_behavior(behavior)
@@ -526,7 +687,7 @@ mod macos {
                 if let WindowEvent::Moved(position) = event {
                     // Persist only the resting position; skip the programmatic moves
                     // that opening/closing the panel produces.
-                    if !AT_REST.load(Ordering::SeqCst) {
+                    if current_mode() != PanelMode::Collapsed {
                         return;
                     }
                     let scale = scale_window.scale_factor().unwrap_or(1.0);
@@ -569,7 +730,8 @@ mod macos {
         // Reassert the webview content size after it is ordered front so
         // WebKit receives a non-zero layout viewport on macOS 26.
         if let Some(window) = app.get_webview_window(PANEL_LABEL) {
-            window.set_size(Size::Logical(tauri::LogicalSize::new(188.0, 188.0)))?;
+            let (width, height) = PanelMode::Collapsed.size();
+            window.set_size(Size::Logical(tauri::LogicalSize::new(width, height)))?;
             window.set_position(Position::Logical(initial_position))?;
             eprintln!(
                 "KAIJU_WINDOW visible={} position={:?} size={:?}",
@@ -606,6 +768,7 @@ mod macos {
                 retry_now,
                 send_reply,
                 set_panel_mode,
+                set_menu_open,
                 begin_reply,
                 end_reply,
                 open_dashboard,
@@ -615,6 +778,104 @@ mod macos {
             .setup(setup)
             .run(tauri::generate_context!())
             .expect("failed to run Kaiju pet shell");
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        // Badge circle from ui/index.html: .status-dot 27x27 at right:2%/top:-4%
+        // of the 104pt pet box, which spans (21..125, 23..127) in a 132pt panel.
+        const BADGE_CENTER: (f64, f64) = (109.42, 32.34);
+        const BADGE_R: f64 = 13.5;
+
+        #[test]
+        fn collapsed_captures_badge_center_and_rim() {
+            let (cx, cy) = BADGE_CENTER;
+            let points = [
+                (cx, cy),
+                (cx + BADGE_R, cy),
+                (cx - BADGE_R, cy),
+                (cx, cy + BADGE_R),
+                (cx, cy - BADGE_R),
+            ];
+            for (x, y) in points {
+                assert!(
+                    capture_region_contains(PanelMode::Collapsed, x, y),
+                    "badge point ({x}, {y}) must be clickable"
+                );
+            }
+        }
+
+        #[test]
+        fn collapsed_captures_blob_and_pill_center() {
+            assert!(capture_region_contains(PanelMode::Collapsed, 73.0, 75.0));
+            // .state-label pill centre (visual overlap only; pill ignores pointers)
+            assert!(capture_region_contains(PanelMode::Collapsed, 73.0, 112.5));
+        }
+
+        #[test]
+        fn collapsed_passes_clicks_through_at_corners() {
+            for (x, y) in [(2.0, 2.0), (130.0, 2.0), (2.0, 130.0), (130.0, 130.0)] {
+                assert!(
+                    !capture_region_contains(PanelMode::Collapsed, x, y),
+                    "corner ({x}, {y}) must pass through"
+                );
+            }
+        }
+
+        #[test]
+        fn attention_captures_banner_and_pet_only() {
+            // Banner centre and pet centre capture…
+            assert!(capture_region_contains(PanelMode::Attention, 165.0, 56.0));
+            assert!(capture_region_contains(PanelMode::Attention, 271.0, 159.0));
+            // …but the empty bottom-left of the 330x216 panel passes through.
+            assert!(!capture_region_contains(PanelMode::Attention, 20.0, 200.0));
+        }
+
+        #[test]
+        fn expanded_captures_everywhere() {
+            assert!(capture_region_contains(PanelMode::Expanded, 0.0, 0.0));
+            assert!(capture_region_contains(PanelMode::Expanded, 419.0, 539.0));
+        }
+
+        #[test]
+        fn open_menu_captures_the_whole_panel() {
+            // A collapsed corner normally passes through…
+            assert!(!should_capture(false, PanelMode::Collapsed, 2.0, 2.0));
+            // …but must capture while the context menu is open, so the
+            // dismiss-click can reach the webview.
+            assert!(should_capture(true, PanelMode::Collapsed, 2.0, 2.0));
+            assert!(should_capture(true, PanelMode::Attention, 20.0, 200.0));
+        }
+
+        #[test]
+        fn menu_auto_closes_only_when_cursor_leaves_the_panel() {
+            let origin = (100.0, 100.0);
+            let size = (132.0, 132.0);
+            // Anywhere over the panel, or within the grace margin: stays open.
+            assert!(!menu_should_auto_close((150.0, 150.0), origin, size));
+            assert!(!menu_should_auto_close((90.0, 100.0), origin, size));
+            assert!(!menu_should_auto_close((232.0 + 20.0, 150.0), origin, size));
+            // Clearly away from the panel: close.
+            assert!(menu_should_auto_close((60.0, 150.0), origin, size));
+            assert!(menu_should_auto_close((150.0, 300.0), origin, size));
+        }
+
+        #[test]
+        fn panel_mode_round_trips() {
+            for mode in [
+                PanelMode::Collapsed,
+                PanelMode::Attention,
+                PanelMode::Expanded,
+            ] {
+                assert_eq!(PanelMode::from_u8(mode.as_u8()), mode);
+            }
+            assert_eq!(PanelMode::parse("collapsed"), Some(PanelMode::Collapsed));
+            assert_eq!(PanelMode::parse("attention"), Some(PanelMode::Attention));
+            assert_eq!(PanelMode::parse("expanded"), Some(PanelMode::Expanded));
+            assert_eq!(PanelMode::parse("bogus"), None);
+        }
     }
 }
 

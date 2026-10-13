@@ -14,7 +14,8 @@
 #
 set -euo pipefail
 
-PORT="${KAIJU_PORT:-7812}"
+# Deliberately not KAIJU_PORT: that is the real daemon's port.
+PORT="${KAIJU_E2E_PORT:-7812}"
 URL="http://127.0.0.1:${PORT}"
 ROOT="$(mktemp -d)"
 BIN="$ROOT/bin"
@@ -43,7 +44,10 @@ start_daemon() {
   # KAIJU_CLAUDE_BIN pins the fake agent by absolute path. PATH alone is not
   # enough: tmux spawns a login shell that re-sources the user's profile and can
   # reorder PATH ahead of our temp dir, launching the real `claude` instead.
+  # Every store points at the temp dir so the real ~/.kaiju is never touched.
   KAIJU_PORT="$PORT" KAIJU_STATE="$STATE" KAIJU_WORKTREES="$WT" \
+    KAIJU_TASKS="$ROOT/tasks.json" KAIJU_CONFIG="$ROOT/config.json" \
+    KAIJU_DEVICES="$ROOT/devices.json" KAIJU_LOGS="$ROOT/logs" \
     KAIJU_CLAUDE_BIN="$BIN/claude" \
     cargo run -q -p kaiju-daemon >>"$LOG" 2>&1 &
   DAEMON_PID=$!

@@ -123,6 +123,7 @@ pub async fn run_judge(workspace: &Path, prompt: &str) -> Result<String> {
         .arg("-p")
         .arg(prompt)
         .current_dir(workspace)
+        .kill_on_drop(true)
         .output();
     let out = tokio::time::timeout(std::time::Duration::from_secs(180), fut)
         .await

@@ -65,6 +65,21 @@ impl Settings {
         config
     }
 
+    /// Reject budgets that could never be satisfied: a zero token cap or a
+    /// non-positive / non-finite cost cap would stop every agent on its first
+    /// poll.
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        if self.max_tokens == Some(0) {
+            return Err("max_tokens must be greater than 0".to_string());
+        }
+        if let Some(cost) = self.max_cost_usd {
+            if !cost.is_finite() || cost <= 0.0 {
+                return Err("max_cost_usd must be a positive number".to_string());
+            }
+        }
+        Ok(())
+    }
+
     /// If a configured budget is reached, return a human-readable reason the
     /// agent should be stopped; otherwise `None`. A threshold that isn't set, or
     /// a metric that isn't known yet, never triggers.
@@ -126,6 +141,33 @@ pub fn save(settings: &Settings) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_rejects_budgets_that_stop_every_agent() {
+        let zero_tokens = Settings {
+            max_tokens: Some(0),
+            ..Settings::default()
+        };
+        assert!(zero_tokens.validate().is_err());
+        for cost in [0.0, -1.0, f64::NAN] {
+            let bad_cost = Settings {
+                max_cost_usd: Some(cost),
+                ..Settings::default()
+            };
+            assert!(bad_cost.validate().is_err(), "{cost}");
+        }
+    }
+
+    #[test]
+    fn validate_accepts_unset_and_positive_budgets() {
+        assert!(Settings::default().validate().is_ok());
+        let capped = Settings {
+            max_tokens: Some(1000),
+            max_cost_usd: Some(2.5),
+            ..Settings::default()
+        };
+        assert!(capped.validate().is_ok());
+    }
     use kaiju_core::agent::AgentType;
     use std::path::PathBuf;
 

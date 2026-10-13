@@ -2,7 +2,7 @@
 # Run `make help` to list available targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help build test fmt fmt-check lint check daemon cli install install-service smoke clean
+.PHONY: help build test fmt fmt-check lint check daemon cli install install-service smoke e2e clean
 
 KAIJU_URL ?= http://127.0.0.1:7800
 

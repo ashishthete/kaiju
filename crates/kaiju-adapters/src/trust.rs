@@ -75,11 +75,31 @@ fn home_dir() -> Option<PathBuf> {
 
 /// Write `contents` to `path` atomically (temp file + rename) so a crash mid-write
 /// can never leave a half-written config.
+///
+/// The temp name is per-process so concurrent daemons don't share it, and the
+/// original file's permissions are carried over (these configs are often 0600).
 fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
-    let tmp = path.with_extension("kaiju-tmp");
+    let tmp = path.with_extension(format!("kaiju-tmp-{}", std::process::id()));
     std::fs::write(&tmp, contents)?;
+    if let Ok(meta) = std::fs::metadata(path) {
+        std::fs::set_permissions(&tmp, meta.permissions())?;
+    }
     std::fs::rename(&tmp, path)
 }
+
+/// Read a config file for a read-modify-write. A missing file is an empty
+/// config; any other failure (permissions, bad UTF-8, I/O) yields `None` so the
+/// caller skips the write rather than replacing a file it could not read.
+fn read_existing(path: &Path) -> Option<String> {
+    match std::fs::read_to_string(path) {
+        Ok(contents) => Some(contents),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(String::new()),
+        Err(_) => None,
+    }
+}
+
+/// Serializes the read-modify-write of the trust files across concurrent starts.
+static TRUST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Mark `run_dir` as trusted in `~/.claude.json` (best-effort).
 pub fn ensure_claude_trust(run_dir: &Path) {
@@ -87,7 +107,10 @@ pub fn ensure_claude_trust(run_dir: &Path) {
         return;
     };
     let path = home.join(".claude.json");
-    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let _guard = TRUST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(existing) = read_existing(&path) else {
+        return;
+    };
     if let Some(updated) = claude_trusted_json(&existing, abs) {
         let _ = write_atomic(&path, &updated);
     }
@@ -100,7 +123,10 @@ pub fn ensure_codex_trust(run_dir: &Path) {
     };
     let dir = home.join(".codex");
     let path = dir.join("config.toml");
-    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let _guard = TRUST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(existing) = read_existing(&path) else {
+        return;
+    };
     if let Some(updated) = codex_trust_appended(&existing, abs) {
         let _ = std::fs::create_dir_all(&dir);
         let _ = write_atomic(&path, &updated);
@@ -110,6 +136,38 @@ pub fn ensure_codex_trust(run_dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp_file(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("kaiju-trust-{}-{name}", std::process::id()))
+    }
+
+    #[test]
+    fn read_existing_treats_only_a_missing_file_as_empty() {
+        assert_eq!(read_existing(&temp_file("absent")), Some(String::new()));
+
+        // Unreadable content (invalid UTF-8) must not be mistaken for empty,
+        // or the caller would overwrite the real config.
+        let bad = temp_file("bad-utf8");
+        std::fs::write(&bad, [0xff, 0xfe]).unwrap();
+        assert_eq!(read_existing(&bad), None);
+        let _ = std::fs::remove_file(&bad);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_atomic_keeps_the_original_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = temp_file("perms.json");
+        std::fs::write(&path, "{}").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        write_atomic(&path, "{\"a\":1}").unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"a\":1}");
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn claude_adds_trust_to_empty_config() {

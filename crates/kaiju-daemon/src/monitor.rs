@@ -141,7 +141,9 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
         .store
         .list_active()
         .into_iter()
-        .filter(|a| a.started_at.is_some())
+        // Batch agents have no tmux session; `batch` drives them from the CLI's
+        // event stream, so polling would misread "no session" as completed.
+        .filter(|a| a.started_at.is_some() && !a.batch)
         .collect();
 
     for agent in &started_agents {

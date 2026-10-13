@@ -38,7 +38,9 @@ test("fmtDuration formats seconds, minutes, and hours", () => {
 });
 
 test("esc escapes HTML-significant characters", () => {
-  assert.equal(esc("<b>&'</b>"), "&lt;b&gt;&amp;'&lt;/b&gt;");
+  assert.equal(esc("<b>&'</b>"), "&lt;b&gt;&amp;&#39;&lt;/b&gt;");
+  // Quotes are escaped too, so a value can't break out of an attribute.
+  assert.equal(esc('" onmouseover="x'), "&quot; onmouseover=&quot;x");
   assert.equal(esc(null), "");
   assert.equal(esc(undefined), "");
   assert.equal(esc("plain"), "plain");

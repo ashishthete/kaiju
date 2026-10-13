@@ -262,6 +262,9 @@ async fn put_settings(
     State(state): State<AppState>,
     Json(new_settings): Json<crate::settings::Settings>,
 ) -> impl IntoResponse {
+    if let Err(reason) = new_settings.validate() {
+        return Err(err(StatusCode::BAD_REQUEST, &reason));
+    }
     if let Err(e) = crate::settings::save(&new_settings) {
         return Err(err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()));
     }
@@ -269,7 +272,34 @@ async fn put_settings(
     Ok(Json(new_settings))
 }
 
-fn err(status: StatusCode, msg: &str) -> impl IntoResponse {
+type ApiError = (StatusCode, Json<ErrorResponse>);
+
+fn agent_not_found() -> ApiError {
+    err(StatusCode::NOT_FOUND, "agent not found")
+}
+
+/// The agent's current state as a response body, or 404 if it was removed
+/// (e.g. deleted by another request) in the meantime.
+fn agent_json(state: &AppState, id: &str) -> Result<Json<AgentResponse>, ApiError> {
+    match state.store.get(id) {
+        Some(agent) => Ok(Json(AgentResponse::from(&agent))),
+        None => Err(agent_not_found()),
+    }
+}
+
+/// Map a start/stop/resume failure to its HTTP status.
+fn lifecycle_error(e: &kaiju_core::NexusError) -> ApiError {
+    use kaiju_core::NexusError;
+    let code = match e {
+        NexusError::AgentNotFound(_) => StatusCode::NOT_FOUND,
+        NexusError::AlreadyRunning(_) | NexusError::NotRunning(_) => StatusCode::CONFLICT,
+        NexusError::Adapter(_) | NexusError::Git(_) => StatusCode::BAD_REQUEST,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    err(code, &e.to_string())
+}
+
+fn err(status: StatusCode, msg: &str) -> ApiError {
     (
         status,
         Json(ErrorResponse {
@@ -306,7 +336,7 @@ fn kill_existing_pet() {
     }
 
     if let Ok(out) = Command::new("lsof")
-        .args(["-ti", &format!("tcp:{port}")])
+        .args(["-ti", &format!("tcp:{port}"), "-sTCP:LISTEN"])
         .output()
     {
         for pid in String::from_utf8_lossy(&out.stdout).split_whitespace() {
@@ -481,50 +511,31 @@ async fn create_agent(
 
     if req.auto_start {
         if let Err(e) = crate::server::start_agent_internal(&state, &id) {
-            return Err(err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()));
+            return Err(lifecycle_error(&e));
         }
     }
 
-    let agent = state.store.get(&id).unwrap();
-    Ok((StatusCode::CREATED, Json(AgentResponse::from(&agent))))
+    Ok((StatusCode::CREATED, agent_json(&state, &id)?))
 }
 
 async fn start_agent(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     match crate::server::start_agent_internal(&state, &id) {
-        Ok(()) => {
-            let agent = state.store.get(&id).unwrap();
-            Ok(Json(AgentResponse::from(&agent)))
-        }
-        Err(e) => Err(err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
+        Ok(()) => agent_json(&state, &id),
+        Err(e) => Err(lifecycle_error(&e)),
     }
 }
 
 async fn resume_agent(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
-    use kaiju_core::NexusError;
     match crate::server::resume_agent_internal(&state, &id) {
-        Ok(()) => {
-            let agent = state.store.get(&id).unwrap();
-            Ok(Json(AgentResponse::from(&agent)))
-        }
-        Err(e) => {
-            let code = match e {
-                NexusError::AgentNotFound(_) => StatusCode::NOT_FOUND,
-                NexusError::AlreadyRunning(_) => StatusCode::CONFLICT,
-                NexusError::Adapter(_) | NexusError::Git(_) => StatusCode::BAD_REQUEST,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            Err(err(code, &e.to_string()))
-        }
+        Ok(()) => agent_json(&state, &id),
+        Err(e) => Err(lifecycle_error(&e)),
     }
 }
 
 async fn stop_agent(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     match crate::server::stop_agent_internal(&state, &id) {
-        Ok(()) => {
-            let agent = state.store.get(&id).unwrap();
-            Ok(Json(AgentResponse::from(&agent)))
-        }
-        Err(e) => Err(err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
+        Ok(()) => agent_json(&state, &id),
+        Err(e) => Err(lifecycle_error(&e)),
     }
 }
 
@@ -576,10 +587,9 @@ async fn set_auto_continue(
     Json(req): Json<AutoContinueRequest>,
 ) -> impl IntoResponse {
     if state.store.set_auto_continue(&id, req.enabled) {
-        let agent = state.store.get(&id).unwrap();
-        Ok(Json(AgentResponse::from(&agent)))
+        agent_json(&state, &id)
     } else {
-        Err(err(StatusCode::NOT_FOUND, "agent not found"))
+        Err(agent_not_found())
     }
 }
 
@@ -706,10 +716,7 @@ async fn adopt_agent(
         extra_args: vec![],
     });
     match crate::server::adopt_agent_internal(&state, &config, &req.session_id) {
-        Ok(id) => {
-            let agent = state.store.get(&id).unwrap();
-            Ok((StatusCode::CREATED, Json(AgentResponse::from(&agent))))
-        }
+        Ok(id) => Ok((StatusCode::CREATED, agent_json(&state, &id)?)),
         Err(e) => {
             let code = match e {
                 NexusError::Adapter(_) => StatusCode::BAD_REQUEST,
