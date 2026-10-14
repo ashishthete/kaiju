@@ -75,6 +75,33 @@ pub fn should_fire(
     true
 }
 
+/// Pure: fold the visible-pane limit signal into the status decision.
+///
+/// `limited` — whether a usage-limit banner is currently on the *visible* screen
+/// — is authoritative for [`AgentStatus::Limited`]. Crucially, when it is
+/// `false` a prior `Limited` is never kept sticky: the agent has resumed (the
+/// banner scrolled off), so we re-derive its status from the parser off a
+/// non-limited baseline. Otherwise [`resolve_status`] would keep returning
+/// `Limited` whenever the parser is silent, stranding a recovered agent.
+pub fn resolve_status_with_limit(
+    limited: bool,
+    current: AgentStatus,
+    parsed: Option<AgentStatus>,
+    idle_secs: i64,
+    threshold: i64,
+    wait_confirm: i64,
+) -> AgentStatus {
+    if limited {
+        return AgentStatus::Limited;
+    }
+    let base = if current == AgentStatus::Limited {
+        AgentStatus::Running
+    } else {
+        current
+    };
+    resolve_status(base, parsed, idle_secs, threshold, wait_confirm)
+}
+
 /// Pure: decide an agent's next status from the parser signal and idle time.
 ///
 /// - A Running agent (whether the parser said so, or it was already Running and
@@ -216,14 +243,6 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
         }
         let idle_secs = (now - record.since).num_seconds();
 
-        let mut next = resolve_status(
-            agent.status,
-            parsed.status,
-            idle_secs,
-            STUCK_THRESHOLD_SECS,
-            WAIT_CONFIRM_SECS,
-        );
-
         // A usage/session limit takes priority: the session is alive but stalled
         // until reset. Detect it on the *visible* pane (no scrollback) so a
         // banner that has scrolled into history after the agent resumed no
@@ -231,9 +250,18 @@ pub(crate) fn poll_once(state: &AppState, activity: &mut HashMap<String, OutputA
         let limit_reset = TmuxManager::capture_pane_visible(&agent.session_name)
             .ok()
             .and_then(|visible| adapter.detect_limit(&visible));
-        if limit_reset.is_some() {
-            next = AgentStatus::Limited;
-        }
+
+        // `detect_limit` is authoritative for `Limited`: a banner on the visible
+        // screen means the agent is stalled at it; once it's gone the agent has
+        // resumed and must not stay stuck as "limited".
+        let next = resolve_status_with_limit(
+            limit_reset.is_some(),
+            agent.status,
+            parsed.status,
+            idle_secs,
+            STUCK_THRESHOLD_SECS,
+            WAIT_CONFIRM_SECS,
+        );
 
         if next != agent.status {
             if notify::should_alert(agent.status, next) {
@@ -453,6 +481,50 @@ mod tests {
             W,
         );
         assert_eq!(next, AgentStatus::WaitingForInput);
+    }
+
+    #[test]
+    fn limit_banner_on_screen_forces_limited() {
+        // A banner on the visible screen wins regardless of prior status/parser.
+        let next = resolve_status_with_limit(
+            true,
+            AgentStatus::Running,
+            Some(AgentStatus::Running),
+            0,
+            T,
+            W,
+        );
+        assert_eq!(next, AgentStatus::Limited);
+    }
+
+    #[test]
+    fn recovered_from_limited_is_not_sticky() {
+        // Banner gone from the visible screen, parser silent: the agent resumed,
+        // so it must NOT stay Limited — it re-derives to Running (active again).
+        let next = resolve_status_with_limit(false, AgentStatus::Limited, None, 0, T, W);
+        assert_eq!(next, AgentStatus::Running);
+    }
+
+    #[test]
+    fn recovered_from_limited_honours_a_fresh_waiting_prompt() {
+        // Banner gone and the parser now sees a settled prompt → WaitingForInput.
+        let next = resolve_status_with_limit(
+            false,
+            AgentStatus::Limited,
+            Some(AgentStatus::WaitingForInput),
+            W,
+            T,
+            W,
+        );
+        assert_eq!(next, AgentStatus::WaitingForInput);
+    }
+
+    #[test]
+    fn non_limited_status_is_unaffected_by_the_limit_fold() {
+        // With no banner and a non-limited baseline, behaviour matches
+        // resolve_status: a long-idle Running agent becomes Stuck.
+        let next = resolve_status_with_limit(false, AgentStatus::Running, None, T, T, W);
+        assert_eq!(next, AgentStatus::Stuck);
     }
 
     #[test]
